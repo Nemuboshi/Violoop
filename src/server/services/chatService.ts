@@ -252,6 +252,7 @@ function buildStructuredChatGuidance(currentDay: number) {
 		'Shape: {"messages":[{"kind":"chat","content":"..."}],"timelineActions":[{"kind":"scene","content":"..."},{"kind":"advance_day","content":"Day N"}]}',
 		"messages must contain normal assistant chat only.",
 		"Use timelineActions for scene narration or day advancement.",
+		"Advance the day when: the current scene has reached a natural narrative close, a significant change has occurred, or the interaction feels complete for this day.",
 		"When advancing a day, the assistant chat message should close the current moment; the backend will place day advancement and next scene after it.",
 		"Never put [scene], [day_transition], [state_update], or Day N markers in message content.",
 		"At most one advance_day action is allowed, and it can only advance to the next day.",

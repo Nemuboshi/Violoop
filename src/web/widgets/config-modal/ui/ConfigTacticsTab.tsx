@@ -8,7 +8,7 @@ export function ConfigTacticsTab(props: {
 	onNewTactic(): void;
 }) {
 	return (
-		<ScrollArea className="min-h-0" contentClassName="grid gap-4 p-4">
+		<ScrollArea className="h-full min-h-0" contentClassName="grid gap-4 p-4">
 			<div className="flex items-start justify-between gap-4">
 				<div>
 					<h3 className="text-base font-semibold text-ink">Tactics library</h3>
