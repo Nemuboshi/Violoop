@@ -36,7 +36,13 @@ function options(
 ): StreamChatOptions {
 	return {
 		provider: provider(),
-		systemPrompt: "System",
+		promptBlocks: [
+			{
+				label: "stable-system",
+				cacheScope: "stable",
+				content: "System",
+			},
+		],
 		messages: [{ role: "user", content: "Hello" }],
 		temperature: 0.5,
 		...overrides,
@@ -96,6 +102,22 @@ describe("openai completions provider adapter", () => {
 			collect(
 				options({
 					cache: { systemPrompt: true, promptCacheRetention: "24h" },
+					promptBlocks: [
+						{
+							label: "stable-system",
+							cacheScope: "stable",
+							content: "Stable",
+						},
+						{
+							label: "session-profile",
+							cacheScope: "session",
+							content: "Session",
+						},
+						{
+							label: "dynamic-runtime",
+							content: "Dynamic",
+						},
+					],
 					provider: provider({
 						compat: {
 							supportsDeveloperRole: true,
@@ -139,11 +161,22 @@ describe("openai completions provider adapter", () => {
 					content: [
 						{
 							type: "text",
-							text: "System",
+							text: "Stable",
 							cache_control: { type: "ephemeral" },
 						},
 					],
 				},
+				{
+					role: "developer",
+					content: [
+						{
+							type: "text",
+							text: "Session",
+							cache_control: { type: "ephemeral" },
+						},
+					],
+				},
+				{ role: "developer", content: "Dynamic" },
 				{ role: "user", content: "Hello" },
 			],
 		});

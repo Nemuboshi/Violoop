@@ -1,6 +1,7 @@
 import type {
 	ChatMessage,
 	LoadedTactic,
+	PromptBlock,
 	SessionClock,
 	SessionProfile,
 	TimelineItem,
@@ -19,23 +20,38 @@ type PromptAssemblyInput = {
 };
 
 export type PromptAssembly = {
-	systemPrompt: string;
+	promptBlocks: PromptBlock[];
 	messages: ChatMessage[];
 };
 
 export function assembleChatPrompt(input: PromptAssemblyInput): PromptAssembly {
 	return {
-		systemPrompt: [
-			buildGlobalSystemGuidance(input.globalSystemPrompt),
-			buildInstructionPriorityGuidance(),
-			buildSessionProfileGuidance(input.profile),
-			buildRuntimeContextGuidance(input.clock, input.timeline),
-			buildCompactionGuidance(input.summary),
-			buildTacticsGuidance(input.tactics),
-			buildStructuredChatGuidance(input.clock.day),
-		]
-			.filter(Boolean)
-			.join("\n\n"),
+		promptBlocks: [
+			{
+				label: "stable-system",
+				cacheScope: "stable",
+				content: [
+					buildGlobalSystemGuidance(input.globalSystemPrompt),
+					buildInstructionPriorityGuidance(),
+					buildStructuredChatGuidance(),
+				].join("\n\n"),
+			},
+			{
+				label: "session-profile",
+				cacheScope: "session",
+				content: buildSessionProfileGuidance(input.profile),
+			},
+			{
+				label: "dynamic-runtime",
+				content: [
+					buildRuntimeContextGuidance(input.clock, input.timeline),
+					buildCompactionGuidance(input.summary),
+					buildTacticsGuidance(input.tactics),
+				]
+					.filter(Boolean)
+					.join("\n\n"),
+			},
+		],
 		messages: toChatMessages(input.timeline),
 	};
 }
@@ -97,11 +113,10 @@ function formatContextEvent(item: TimelineItem) {
 	return `- ${label}.${day} ${item.content}`;
 }
 
-function buildStructuredChatGuidance(currentDay: number) {
+function buildStructuredChatGuidance() {
 	return [
 		"Structured output contract:",
 		"Return JSON only. Do not wrap it in markdown.",
-		`Current day is Day ${currentDay}.`,
 		'Shape: {"messages":[{"kind":"chat","content":"..."}],"timelineActions":[{"kind":"scene","content":"..."},{"kind":"advance_day","content":"Day N"}]}',
 		"messages must contain normal assistant speech only.",
 		"timelineActions are the only place for scene narration or day advancement.",

@@ -2,6 +2,7 @@ import type {
 	ChatMessage,
 	ChatProviderAdapter,
 	ChatUsage,
+	PromptBlock,
 	StreamChatOptions,
 	ThinkingLevel,
 } from "../../shared/types";
@@ -199,28 +200,39 @@ function mapThinkingLevel(
 }
 
 function buildMessages(options: StreamChatOptions): OpenAiMessage[] {
-	const systemRole = options.provider.compat.supportsDeveloperRole
+	const systemRole: ChatMessage["role"] = options.provider.compat
+		.supportsDeveloperRole
 		? "developer"
 		: "system";
-	const systemContent = buildSystemPromptContent(options);
-	return [{ role: systemRole, content: systemContent }, ...options.messages];
+	const promptMessages = options.promptBlocks
+		.filter((block) => block.content.trim())
+		.map((block) => ({
+			role: systemRole,
+			content: buildPromptBlockContent(options, block),
+		}));
+
+	return [...promptMessages, ...options.messages];
 }
 
-function buildSystemPromptContent(options: StreamChatOptions): OpenAiContent {
+function buildPromptBlockContent(
+	options: StreamChatOptions,
+	block: PromptBlock,
+): OpenAiContent {
 	if (
 		options.cache?.systemPrompt &&
-		options.provider.compat.cacheControlFormat === "anthropic"
+		options.provider.compat.cacheControlFormat === "anthropic" &&
+		block.cacheScope
 	) {
 		return [
 			{
 				type: "text",
-				text: options.systemPrompt,
+				text: block.content,
 				cache_control: { type: "ephemeral" },
 			},
 		];
 	}
 
-	return options.systemPrompt;
+	return block.content;
 }
 
 function parseStreamLine(line: string) {

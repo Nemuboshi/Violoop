@@ -114,6 +114,13 @@ describe("session runtime", () => {
 			temperature: 0.4,
 			thinkingLevel: "high",
 			cache: { systemPrompt: true },
+			promptBlocks: [
+				{
+					label: "stable-system",
+					cacheScope: "stable",
+					content: expect.stringContaining("Generate opening scene messages"),
+				},
+			],
 			messages: [
 				{
 					role: "user",
@@ -282,6 +289,21 @@ describe("session runtime", () => {
 		const audit = (await conversations.listTimelineItems(conversation.id)).find(
 			(item) => item.kind === "state_update",
 		);
+		expect(adapter.calls[0]).toMatchObject({
+			promptBlocks: [
+				{
+					label: "stable-system",
+					cacheScope: "stable",
+					content: expect.stringContaining(
+						"You update Violoop session state after a day transition.",
+					),
+				},
+				{
+					label: "dynamic-runtime",
+					content: expect.stringContaining("Allowed keys:"),
+				},
+			],
+		});
 		expect(audit).toMatchObject({
 			promptVisibility: "hidden",
 			content: "Day 2 state updated after day transition.",
@@ -498,4 +520,57 @@ describe("session runtime", () => {
 			metadata: { day: 3 },
 		});
 	});
+
+	it("queues daily state updates so concurrent requests do not duplicate the same day", async () => {
+		const conversations = await import("../../src/server/conversations");
+		const runtime = await import("../../src/server/runtime");
+		const conversation = await conversations.createConversation({
+			title: "Queued state",
+		});
+		await conversations.setSessionClock({
+			conversationId: conversation.id,
+			day: 2,
+			updatedAt: "2026-01-01T00:00:00.000Z",
+		});
+		let release: (() => void) | undefined;
+		const calls: unknown[] = [];
+		const adapter: ChatProviderAdapter & { calls: unknown[] } = {
+			calls,
+			async *streamChat(options) {
+				calls.push(options);
+				await new Promise<void>((resolve) => {
+					release = resolve;
+				});
+				yield { type: "text", text: '{"patches":[],"stateNote":"Queued"}' };
+			},
+		};
+		const input = {
+			conversationId: conversation.id,
+			config: config(),
+			provider: provider(),
+			adapter,
+		};
+
+		const first = runtime.runQueuedDailyStateUpdate(input);
+		await waitFor(() => adapter.calls.length === 1);
+		await runtime.runQueuedDailyStateUpdate(input);
+		release?.();
+		await first;
+		await runtime.runQueuedDailyStateUpdate(input);
+
+		expect(adapter.calls).toHaveLength(1);
+		await expect(
+			conversations.getSessionClock(conversation.id),
+		).resolves.toMatchObject({ stateUpdatedDay: 2 });
+	});
 });
+
+async function waitFor(check: () => boolean | Promise<boolean>) {
+	for (let attempt = 0; attempt < 20; attempt += 1) {
+		if (await check()) {
+			return;
+		}
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+	throw new Error("Timed out waiting for condition.");
+}

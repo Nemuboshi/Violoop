@@ -35,6 +35,28 @@ const summarySystemPrompt = [
 	"Prefer dense bullet points grouped by topic. Keep wording concise.",
 ].join(" ");
 
+const compactionJobs = new Set<string>();
+
+export function scheduleConversationCompaction(
+	input: CompactConversationInput,
+): void {
+	if (compactionJobs.has(input.conversationId)) {
+		return;
+	}
+
+	compactionJobs.add(input.conversationId);
+	void compactConversationIfNeeded(input)
+		.catch((error) => {
+			const message = error instanceof Error ? error.message : "unknown error";
+			console.warn(
+				`[compaction] conversation=${input.conversationId} skipped: ${message}`,
+			);
+		})
+		.finally(() => {
+			compactionJobs.delete(input.conversationId);
+		});
+}
+
 export async function compactConversationIfNeeded(
 	input: CompactConversationInput,
 ): Promise<CompactConversationResult> {
@@ -156,7 +178,13 @@ async function summarizeCompaction(input: {
 
 	for await (const event of input.adapter.streamChat({
 		provider: input.provider,
-		systemPrompt: summarySystemPrompt,
+		promptBlocks: [
+			{
+				label: "stable-system",
+				cacheScope: "stable",
+				content: summarySystemPrompt,
+			},
+		],
 		temperature: input.temperature,
 		thinkingLevel: input.thinkingLevel,
 		cache: input.cache,

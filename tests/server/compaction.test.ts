@@ -195,6 +195,13 @@ describe("conversation compaction", () => {
 			temperature: 0.2,
 			thinkingLevel: "minimal",
 			cache: { systemPrompt: true },
+			promptBlocks: [
+				{
+					label: "stable-system",
+					cacheScope: "stable",
+					content: expect.stringContaining("You compact chat history"),
+				},
+			],
 			messages: [
 				{
 					role: "user",
@@ -279,7 +286,93 @@ describe("conversation compaction", () => {
 			{ role: "assistant", content: "Hi" },
 		]);
 	});
+
+	it("schedules at most one background compaction per conversation", async () => {
+		const conversations = await import("../../src/server/conversations");
+		const { scheduleConversationCompaction } = await import(
+			"../../src/server/compaction"
+		);
+		const conversation = await conversationWithMessages([
+			"A".repeat(120),
+			"B".repeat(120),
+		]);
+		let release: (() => void) | undefined;
+		const calls: unknown[] = [];
+		const adapter: ChatProviderAdapter & { calls: unknown[] } = {
+			calls,
+			async *streamChat(options) {
+				calls.push(options);
+				await new Promise<void>((resolve) => {
+					release = resolve;
+				});
+				yield { type: "text", text: "Queued summary" };
+			},
+		};
+
+		const input = {
+			conversationId: conversation.id,
+			config: config({ enabled: true, triggerTokens: 1, keepRecentTokens: 40 }),
+			provider: provider(),
+			adapter,
+		};
+		scheduleConversationCompaction(input);
+		scheduleConversationCompaction(input);
+		await waitFor(() => calls.length === 1);
+		release?.();
+		await waitFor(async () => {
+			const context = await conversations.loadPromptContext(conversation.id);
+			return context.summary?.summary === "Queued summary";
+		});
+
+		expect(calls).toHaveLength(1);
+	});
+
+	it("logs background compaction scheduler failures without surfacing them", async () => {
+		const { scheduleConversationCompaction } = await import(
+			"../../src/server/compaction"
+		);
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+		scheduleConversationCompaction({
+			conversationId: "broken",
+			config: undefined as never,
+			provider: provider(),
+			adapter: adapterReturning(),
+		});
+		await waitFor(() => warn.mock.calls.length > 0);
+
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining("[compaction] conversation=broken skipped:"),
+		);
+
+		scheduleConversationCompaction({
+			conversationId: "raw-failure",
+			config: {
+				get chat() {
+					throw "raw failure";
+				},
+			} as never,
+			provider: provider(),
+			adapter: adapterReturning(),
+		});
+		await waitFor(() => warn.mock.calls.length > 1);
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining(
+				"[compaction] conversation=raw-failure skipped: unknown error",
+			),
+		);
+	});
 });
+
+async function waitFor(check: () => boolean | Promise<boolean>) {
+	for (let attempt = 0; attempt < 20; attempt += 1) {
+		if (await check()) {
+			return;
+		}
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+	throw new Error("Timed out waiting for condition.");
+}
 
 function timeline(
 	kind: TimelineItem["kind"],

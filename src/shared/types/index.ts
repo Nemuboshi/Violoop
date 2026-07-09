@@ -182,10 +182,16 @@ export type ActiveProvider = {
 export type StreamChatOptions = {
 	provider: ActiveProvider;
 	messages: ChatMessage[];
-	systemPrompt: string;
+	promptBlocks: PromptBlock[];
 	temperature?: number;
 	thinkingLevel?: ThinkingLevel;
 	cache?: VioloopConfig["chat"]["cache"];
+};
+
+export type PromptBlock = {
+	label: "stable-system" | "session-profile" | "dynamic-runtime";
+	content: string;
+	cacheScope?: "stable" | "session";
 };
 
 export type ChatUsage = {

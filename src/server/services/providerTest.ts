@@ -33,7 +33,13 @@ export async function testProvider(
 	for await (const event of adapter.streamChat({
 		provider,
 		messages: [{ role: "user", content: "Reply with OK." }],
-		systemPrompt: "You are testing provider connectivity. Reply with OK.",
+		promptBlocks: [
+			{
+				label: "stable-system",
+				cacheScope: "stable",
+				content: "You are testing provider connectivity. Reply with OK.",
+			},
+		],
 		temperature: 0,
 	})) {
 		if (event.type === "text") {

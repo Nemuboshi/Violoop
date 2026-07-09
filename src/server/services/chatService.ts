@@ -6,12 +6,13 @@ import type {
 	ConversationSummary,
 	TimelineItem,
 } from "../../shared/types";
-import { compactConversationIfNeeded } from "../compaction";
+import { scheduleConversationCompaction } from "../compaction";
 import { loadConfig, resolveActiveProvider } from "../config";
 import {
 	appendTimelineItem,
 	getConversation,
 	listTimelineItems,
+	loadPromptContext,
 	pruneTimelineItemsAfter,
 	setSessionClock,
 	updateTimelineItemContent,
@@ -22,7 +23,7 @@ import { getProviderAdapter } from "../providers";
 import {
 	advanceDay,
 	ensureSessionClock,
-	runDailyStateUpdate,
+	scheduleDailyStateUpdate,
 } from "../runtime";
 import { selectTactics } from "../tactics";
 import { logUsage, storeUsage } from "./usageStore";
@@ -130,12 +131,7 @@ async function generateAssistantTurn(input: {
 	const adapter = getProviderAdapter(provider.api);
 	const conversationId = input.conversation.id;
 	const clock = await ensureSessionClock(conversationId);
-	const compaction = await compactConversationIfNeeded({
-		conversationId,
-		config,
-		provider,
-		adapter,
-	});
+	const promptContext = await loadPromptContext(conversationId);
 	const tacticSelection = await selectTactics({
 		conversationId,
 		message: input.userContent,
@@ -144,8 +140,8 @@ async function generateAssistantTurn(input: {
 		globalSystemPrompt: config.chat.systemPrompt,
 		profile: input.conversation.profile,
 		clock,
-		timeline: compaction.context.messages,
-		summary: compaction.context.summary,
+		timeline: promptContext.messages,
+		summary: promptContext.summary,
 		tactics: tacticSelection.loaded,
 	});
 	let assistantRawContent = "";
@@ -154,7 +150,7 @@ async function generateAssistantTurn(input: {
 	for await (const event of adapter.streamChat({
 		provider,
 		messages: prompt.messages,
-		systemPrompt: prompt.systemPrompt,
+		promptBlocks: prompt.promptBlocks,
 		temperature: config.chat.temperature,
 		thinkingLevel: config.chat.thinkingLevel,
 		cache: config.chat.cache,
@@ -179,24 +175,25 @@ async function generateAssistantTurn(input: {
 	});
 
 	if (createdItems.some((item) => item.kind === "day_transition")) {
-		void runDailyStateUpdate({
+		scheduleDailyStateUpdate({
 			conversationId,
 			config,
 			provider,
 			adapter,
-		}).catch((error) => {
-			const message = error instanceof Error ? error.message : "unknown error";
-			console.warn(
-				`[runtime] conversation=${conversationId} state update skipped: ${message}`,
-			);
 		});
 	}
+
+	scheduleConversationCompaction({
+		conversationId,
+		config,
+		provider,
+		adapter,
+	});
 
 	return {
 		requestId: input.requestId,
 		conversationId,
 		tacticIds: tacticSelection.loaded.map((tactic) => tactic.id),
-		compactionId: compaction.compacted?.id,
 		usage: assistantUsage,
 		clock: await ensureSessionClock(conversationId),
 		timelineItems: await listTimelineItems(conversationId),

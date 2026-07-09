@@ -30,6 +30,15 @@ type OpeningSceneResult = {
 	scenes?: string[];
 };
 
+type DailyStateUpdateInput = {
+	conversationId: string;
+	config: VioloopConfig;
+	provider: ActiveProvider;
+	adapter: ChatProviderAdapter;
+};
+
+const dailyStateJobs = new Set<string>();
+
 export async function ensureSessionClock(
 	conversationId: string,
 ): Promise<SessionClock> {
@@ -92,15 +101,21 @@ async function generateOpeningScenes(input: {
 	let content = "";
 	for await (const event of input.adapter.streamChat({
 		provider: input.provider,
-		systemPrompt: [
-			"Generate opening scene messages for a new Violoop chat session.",
-			'Return JSON only with shape {"scenes":["..."]}.',
-			"Write 1 or 2 short scene messages.",
-			"The scene is neutral narration, not assistant speech.",
-			"Describe the session atmosphere or starting context without making the assistant a character.",
-			"Do not include assistant dialogue, user dialogue, markdown, or labels.",
-			"Do not describe UI mechanics.",
-		].join(" "),
+		promptBlocks: [
+			{
+				label: "stable-system",
+				cacheScope: "stable",
+				content: [
+					"Generate opening scene messages for a new Violoop chat session.",
+					'Return JSON only with shape {"scenes":["..."]}.',
+					"Write 1 or 2 short scene messages.",
+					"The scene is neutral narration, not assistant speech.",
+					"Describe the session atmosphere or starting context without making the assistant a character.",
+					"Do not include assistant dialogue, user dialogue, markdown, or labels.",
+					"Do not describe UI mechanics.",
+				].join(" "),
+			},
+		],
 		temperature: input.config.chat.temperature,
 		thinkingLevel: input.config.chat.thinkingLevel,
 		cache: input.config.chat.cache,
@@ -127,12 +142,37 @@ async function generateOpeningScenes(input: {
 	return sanitizeOpeningScenes(parsed.scenes);
 }
 
-export async function runDailyStateUpdate(input: {
-	conversationId: string;
-	config: VioloopConfig;
-	provider: ActiveProvider;
-	adapter: ChatProviderAdapter;
-}) {
+export function scheduleDailyStateUpdate(input: DailyStateUpdateInput): void {
+	void runQueuedDailyStateUpdate(input).catch((error) => {
+		const message = error instanceof Error ? error.message : "unknown error";
+		console.warn(
+			`[runtime] conversation=${input.conversationId} state update skipped: ${message}`,
+		);
+	});
+}
+
+export async function runQueuedDailyStateUpdate(
+	input: DailyStateUpdateInput,
+): Promise<void> {
+	const clock = await ensureSessionClock(input.conversationId);
+	if (clock.stateUpdatedDay === clock.day) {
+		return;
+	}
+
+	const key = `${input.conversationId}:${clock.day}`;
+	if (dailyStateJobs.has(key)) {
+		return;
+	}
+
+	dailyStateJobs.add(key);
+	try {
+		await runDailyStateUpdate(input);
+	} finally {
+		dailyStateJobs.delete(key);
+	}
+}
+
+export async function runDailyStateUpdate(input: DailyStateUpdateInput) {
 	const clock = await ensureSessionClock(input.conversationId);
 	await ensureSessionUserState(input.conversationId);
 	const states = await listUserState(input.conversationId);
@@ -206,14 +246,23 @@ async function askRuntimeModel(input: {
 	let content = "";
 	for await (const event of input.adapter.streamChat({
 		provider: input.provider,
-		systemPrompt: [
-			"You update Violoop session state after a day transition.",
-			"Return JSON only. Do not wrap it in markdown.",
-			`Allowed keys: ${input.states.map((state) => state.key).join(", ") || "none"}.`,
-			"Each patch delta must be between -10 and 10.",
-			"Do not decide or request day advancement.",
-			"The day has already changed; adjust state for the new day using the recent timeline.",
-		].join(" "),
+		promptBlocks: [
+			{
+				label: "stable-system",
+				cacheScope: "stable",
+				content: [
+					"You update Violoop session state after a day transition.",
+					"Return JSON only. Do not wrap it in markdown.",
+					"Each patch delta must be between -10 and 10.",
+					"Do not decide or request day advancement.",
+					"The day has already changed; adjust state for the new day using the recent timeline.",
+				].join(" "),
+			},
+			{
+				label: "dynamic-runtime",
+				content: `Allowed keys: ${input.states.map((state) => state.key).join(", ") || "none"}.`,
+			},
+		],
 		temperature: input.config.chat.temperature,
 		thinkingLevel: input.config.chat.thinkingLevel,
 		cache: input.config.chat.cache,

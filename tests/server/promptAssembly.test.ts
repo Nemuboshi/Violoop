@@ -58,27 +58,37 @@ describe("chat prompt assembly", () => {
 			{ role: "user", content: "Hello" },
 			{ role: "assistant", content: "Hi" },
 		]);
-		expect(prompt.systemPrompt).toContain(
-			"Global behavior policy:\nStay direct.",
-		);
-		expect(prompt.systemPrompt).toContain("Instruction priority:");
-		expect(prompt.systemPrompt).toContain("Assistant display name: Ava");
-		expect(prompt.systemPrompt).toContain("Runtime context:");
-		expect(prompt.systemPrompt).toContain("- Day transition. Day 2. Day 2");
-		expect(prompt.systemPrompt).toContain("- Scene. Rain at the window.");
-		expect(prompt.systemPrompt).toContain(
-			"- Runtime state. Visible state note.",
-		);
-		expect(prompt.systemPrompt).not.toContain("Hidden state");
-		expect(prompt.systemPrompt).toContain("Earlier durable context.");
-		expect(prompt.systemPrompt).toContain(
-			"Optional response tactics for this turn:",
-		);
-		expect(prompt.systemPrompt).toContain("Tactic: Calm down");
-		expect(prompt.systemPrompt).toContain("Structured output contract:");
-		expect(prompt.systemPrompt).toContain(
+		const stable = block(prompt, "stable-system");
+		const session = block(prompt, "session-profile");
+		const dynamic = block(prompt, "dynamic-runtime");
+
+		expect(stable).toMatchObject({ cacheScope: "stable" });
+		expect(stable.content).toContain("Global behavior policy:\nStay direct.");
+		expect(stable.content).toContain("Instruction priority:");
+		expect(stable.content).toContain("Structured output contract:");
+		expect(stable.content).toContain(
 			"messages must contain normal assistant speech only.",
 		);
+		expect(stable.content).not.toContain("Current day is Day 2.");
+		expect(stable.content).not.toContain("Assistant display name: Ava");
+
+		expect(session).toMatchObject({ cacheScope: "session" });
+		expect(session.content).toContain("Assistant display name: Ava");
+		expect(session.content).toContain("User role in this session:");
+		expect(session.content).not.toContain("Runtime context:");
+
+		expect(dynamic.cacheScope).toBeUndefined();
+		expect(dynamic.content).toContain("Runtime context:");
+		expect(dynamic.content).toContain("Current day: Day 2.");
+		expect(dynamic.content).toContain("- Day transition. Day 2. Day 2");
+		expect(dynamic.content).toContain("- Scene. Rain at the window.");
+		expect(dynamic.content).toContain("- Runtime state. Visible state note.");
+		expect(dynamic.content).not.toContain("Hidden state");
+		expect(dynamic.content).toContain("Earlier durable context.");
+		expect(dynamic.content).toContain(
+			"Optional response tactics for this turn:",
+		);
+		expect(dynamic.content).toContain("Tactic: Calm down");
 	});
 
 	it("keeps empty optional sections out while still stating current runtime day", async () => {
@@ -94,11 +104,28 @@ describe("chat prompt assembly", () => {
 		});
 
 		expect(prompt.messages).toEqual([]);
-		expect(prompt.systemPrompt).toContain("Current day: Day 2.");
-		expect(prompt.systemPrompt).not.toContain("Earlier conversation context");
-		expect(prompt.systemPrompt).not.toContain("Tactic:");
+		expect(block(prompt, "dynamic-runtime").content).toContain(
+			"Current day: Day 2.",
+		);
+		expect(block(prompt, "dynamic-runtime").content).not.toContain(
+			"Earlier conversation context",
+		);
+		expect(block(prompt, "dynamic-runtime").content).not.toContain("Tactic:");
 	});
 });
+
+function block(
+	prompt: Awaited<
+		ReturnType<
+			typeof import("../../src/server/promptAssembly").assembleChatPrompt
+		>
+	>,
+	label: "stable-system" | "session-profile" | "dynamic-runtime",
+) {
+	return prompt.promptBlocks.find(
+		(item) => item.label === label,
+	) as NonNullable<(typeof prompt.promptBlocks)[number]>;
+}
 
 function item(
 	kind: TimelineItem["kind"],
