@@ -1,0 +1,50 @@
+{
+	"name": "violoop",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "concurrently -k -n api,web -c cyan,green \"pnpm dev:api\" \"pnpm dev:web\"",
+		"dev:api": "tsx watch src/server/index.ts",
+		"dev:web": "vite --host 127.0.0.1",
+		"build": "tsc --noEmit && vite build",
+		"test": "vitest run",
+		"test:coverage": "vitest run --coverage",
+		"format": "biome format --write .",
+		"lint": "biome lint .",
+		"check": "biome check .",
+		"preview": "vite preview --host 127.0.0.1",
+		"seed": "node scripts/seed-data.ts",
+		"seed:force": "node scripts/seed-data.ts --force"
+	},
+	"dependencies": {
+		"@base-ui/react": "^1.6.0",
+		"@fastify/cors": "^11.2.0",
+		"@tailwindcss/vite": "^4.3.2",
+		"@vitejs/plugin-react": "^5.1.1",
+		"concurrently": "^9.2.1",
+		"fastify": "^5.10.0",
+		"react": "^19.2.3",
+		"react-dom": "^19.2.3",
+		"tailwindcss": "^4.3.2",
+		"tsx": "^4.21.0",
+		"typescript": "^5.9.3",
+		"vite": "^7.2.7",
+		"zod": "^4.4.3"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.3",
+		"@testing-library/jest-dom": "^6.9.1",
+		"@testing-library/react": "^16.3.2",
+		"@testing-library/user-event": "^14.6.1",
+		"@types/node": "^24.10.2",
+		"@types/react": "^19.2.7",
+		"@types/react-dom": "^19.2.3",
+		"@vitest/coverage-v8": "^4.1.10",
+		"jsdom": "^29.1.1",
+		"vitest": "^4.1.10"
+	},
+	"engines": {
+		"node": ">=22.19.0"
+	}
+}

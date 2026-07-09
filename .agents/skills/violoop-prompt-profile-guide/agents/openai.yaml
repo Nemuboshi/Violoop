@@ -1,0 +1,4 @@
+interface:
+  display_name: "Violoop Prompt Profile Guide"
+  short_description: "Interview users and suggest Violoop system prompt and roles."
+  default_prompt: "Ask questions and suggest a Violoop system prompt and session roles."

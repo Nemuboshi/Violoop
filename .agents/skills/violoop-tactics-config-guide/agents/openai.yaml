@@ -1,0 +1,4 @@
+interface:
+  display_name: "Violoop Tactics Config Guide"
+  short_description: "Guide Violoop status and tactics JSON configuration."
+  default_prompt: "Guide me to append valid Violoop states and tactics JSON."
