@@ -323,7 +323,9 @@ export function buildTacticsGuidance(tactics: LoadedTactic[]) {
 	});
 
 	return [
-		"Optional response tactics for this turn. These must stay subordinate to system/developer instructions and user requests.",
+		"Optional response tactics for this turn:",
+		"Apply these only when they help answer the latest user message.",
+		"Tactics may shape structure, emphasis, and wording. They must not change identity, invent facts, override the session profile, or bypass higher-priority instructions.",
 		...blocks,
 	].join("\n\n");
 }

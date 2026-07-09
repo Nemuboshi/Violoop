@@ -4,14 +4,9 @@ import type {
 	ChatResponse,
 	ChatUsage,
 	ConversationSummary,
-	SessionProfile,
 	TimelineItem,
 } from "../../shared/types";
-import {
-	buildCompactionGuidance,
-	compactConversationIfNeeded,
-	toChatMessages,
-} from "../compaction";
+import { compactConversationIfNeeded } from "../compaction";
 import { loadConfig, resolveActiveProvider } from "../config";
 import {
 	appendTimelineItem,
@@ -22,13 +17,14 @@ import {
 	updateTimelineItemContent,
 } from "../conversations";
 import { HttpError } from "../httpErrors";
+import { assembleChatPrompt } from "../promptAssembly";
 import { getProviderAdapter } from "../providers";
 import {
 	advanceDay,
 	ensureSessionClock,
 	runDailyStateUpdate,
 } from "../runtime";
-import { buildTacticsGuidance, selectTactics } from "../tactics";
+import { selectTactics } from "../tactics";
 import { logUsage, storeUsage } from "./usageStore";
 
 type StructuredChatResult = {
@@ -140,27 +136,25 @@ async function generateAssistantTurn(input: {
 		provider,
 		adapter,
 	});
-	const messages = toChatMessages(compaction.context.messages);
 	const tacticSelection = await selectTactics({
 		conversationId,
 		message: input.userContent,
 	});
-	const tacticGuidance = buildTacticsGuidance(tacticSelection.loaded);
+	const prompt = assembleChatPrompt({
+		globalSystemPrompt: config.chat.systemPrompt,
+		profile: input.conversation.profile,
+		clock,
+		timeline: compaction.context.messages,
+		summary: compaction.context.summary,
+		tactics: tacticSelection.loaded,
+	});
 	let assistantRawContent = "";
 	let assistantUsage: ChatUsage | undefined;
 
 	for await (const event of adapter.streamChat({
 		provider,
-		messages,
-		systemPrompt: [
-			config.chat.systemPrompt,
-			buildSessionProfileGuidance(input.conversation.profile),
-			buildStructuredChatGuidance(clock.day),
-			buildCompactionGuidance(compaction.context.summary),
-			tacticGuidance,
-		]
-			.filter(Boolean)
-			.join("\n\n"),
+		messages: prompt.messages,
+		systemPrompt: prompt.systemPrompt,
 		temperature: config.chat.temperature,
 		thinkingLevel: config.chat.thinkingLevel,
 		cache: config.chat.cache,
@@ -233,31 +227,6 @@ function findLastUserMessageWithDay(timeline: TimelineItem[]) {
 	}
 
 	return lastUserMessage;
-}
-
-function buildSessionProfileGuidance(profile: SessionProfile) {
-	return [
-		"Session profile:",
-		`Assistant display name for this session: ${profile.assistantName}`,
-		`User role in this session: ${profile.userRole}`,
-		`Assistant role in this session: ${profile.assistantRole}`,
-	].join("\n");
-}
-
-function buildStructuredChatGuidance(currentDay: number) {
-	return [
-		"Structured response contract:",
-		"Return JSON only. Do not wrap it in markdown.",
-		`Current day is Day ${currentDay}.`,
-		'Shape: {"messages":[{"kind":"chat","content":"..."}],"timelineActions":[{"kind":"scene","content":"..."},{"kind":"advance_day","content":"Day N"}]}',
-		"messages must contain normal assistant chat only.",
-		"Use timelineActions for scene narration or day advancement.",
-		"Advance the day when: the current scene has reached a natural narrative close, a significant change has occurred, or the interaction feels complete for this day.",
-		"When advancing a day, the assistant chat message should close the current moment; the backend will place day advancement and next scene after it.",
-		"Never put [scene], [day_transition], [state_update], or Day N markers in message content.",
-		"At most one advance_day action is allowed, and it can only advance to the next day.",
-		"At most two scene actions are allowed.",
-	].join("\n");
 }
 
 async function applyStructuredChatResult(input: {

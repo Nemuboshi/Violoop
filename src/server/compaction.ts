@@ -109,10 +109,16 @@ export function buildCompactionGuidance(summary: StoredCompaction | undefined) {
 }
 
 export function toChatMessages(messages: TimelineItem[]): ChatMessage[] {
-	return messages.map((message) => ({
-		role: message.role === "user" ? "user" : "assistant",
-		content: formatTimelineItemForPrompt(message),
-	}));
+	return messages
+		.filter(
+			(message) =>
+				message.kind === "chat" &&
+				(message.role === "user" || message.role === "assistant"),
+		)
+		.map((message) => ({
+			role: message.role,
+			content: message.content,
+		}));
 }
 
 function splitMessagesForCompaction(
@@ -220,20 +226,4 @@ function estimateMessageTokens(message: TimelineItem) {
 
 function estimateTextTokens(value: string) {
 	return Math.ceil(value.length / 4);
-}
-
-function formatTimelineItemForPrompt(message: TimelineItem) {
-	if (message.kind === "chat") {
-		return message.content;
-	}
-
-	if (message.kind === "day_transition") {
-		return `Context event: day transition.\n${message.content}`;
-	}
-
-	if (message.kind === "scene") {
-		return `Context event: scene narration.\n${message.content}`;
-	}
-
-	return `Context event: ${message.kind}.\n${message.content}`;
 }

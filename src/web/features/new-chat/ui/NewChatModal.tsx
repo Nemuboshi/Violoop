@@ -65,7 +65,10 @@ export function NewChatModal(props: NewChatModalProps) {
 						className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto]"
 						onFormSubmit={props.onStart}
 					>
-						<ScrollArea className="h-full min-h-0" contentClassName="grid gap-5 p-5">
+						<ScrollArea
+							className="h-full min-h-0"
+							contentClassName="grid gap-5 p-5"
+						>
 							<TextField
 								label="Session name"
 								value={props.draft.title}

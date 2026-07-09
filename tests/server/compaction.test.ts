@@ -263,10 +263,12 @@ describe("conversation compaction", () => {
 		expect(warn).toHaveBeenCalledWith(expect.stringContaining("unknown error"));
 	});
 
-	it("formats chat and context events into provider messages", async () => {
+	it("formats only real chat turns into provider messages", async () => {
 		const { toChatMessages } = await import("../../src/server/compaction");
 		const items: TimelineItem[] = [
 			timeline("chat", "user", "Hello"),
+			timeline("chat", "assistant", "Hi"),
+			timeline("chat", "system", "Internal note"),
 			timeline("day_transition", "system", "Day 2"),
 			timeline("scene", "system", "Rain at the window."),
 			timeline("state_update", "system", "State changed."),
@@ -274,15 +276,7 @@ describe("conversation compaction", () => {
 
 		expect(toChatMessages(items)).toEqual([
 			{ role: "user", content: "Hello" },
-			{ role: "assistant", content: "Context event: day transition.\nDay 2" },
-			{
-				role: "assistant",
-				content: "Context event: scene narration.\nRain at the window.",
-			},
-			{
-				role: "assistant",
-				content: "Context event: state_update.\nState changed.",
-			},
+			{ role: "assistant", content: "Hi" },
 		]);
 	});
 });

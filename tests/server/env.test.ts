@@ -6,6 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 let tempDir = "";
 
 afterEach(async () => {
+	delete process.env.VIOLOOP_HOST;
+	delete process.env.VIOLOOP_PORT;
+	delete process.env.VIOLOOP_CORS_ORIGINS;
 	delete process.env.VIOLOOP_CONTEXT_DATA_DIR;
 	delete process.env.VIOLOOP_DATA_DIR;
 	delete process.env.VIOLOOP_TEST_ENV;
@@ -98,5 +101,26 @@ describe("server environment and paths", () => {
 		expect(getServerPaths().settingsPath).toBe(
 			resolve(tempDir, "settings.json"),
 		);
+	});
+
+	it("uses deployment env for the Vite API proxy target", async () => {
+		process.env.VIOLOOP_HOST = "0.0.0.0";
+		process.env.VIOLOOP_PORT = "4321";
+		const viteConfig = (await import("../../vite.config")).default;
+
+		const config =
+			typeof viteConfig === "function"
+				? await viteConfig({ mode: "test", command: "serve" } as never)
+				: viteConfig;
+		expect(config.server?.proxy).toMatchObject({
+			"/api": "http://0.0.0.0:4321",
+		});
+
+		process.env.VIOLOOP_PORT = "bad";
+		expect(() =>
+			typeof viteConfig === "function"
+				? viteConfig({ mode: "test", command: "serve" } as never)
+				: viteConfig,
+		).toThrow("VIOLOOP_PORT");
 	});
 });
