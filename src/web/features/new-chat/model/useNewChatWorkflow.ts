@@ -5,7 +5,10 @@ import {
 } from "../../../entities/conversation";
 import {
 	defaultNewChatDraft,
+	defaultSessionCapabilities,
+	type SessionCapabilities,
 	type SessionProfile,
+	toSessionCapabilities,
 	toSessionProfile,
 } from "../../../entities/session";
 import type {
@@ -14,9 +17,10 @@ import type {
 	TacticsStatusResponse,
 } from "../../../entities/tactic";
 
-export type NewChatDraft = SessionProfile & {
-	title: string;
-};
+export type NewChatDraft = SessionProfile &
+	SessionCapabilities & {
+		title: string;
+	};
 
 type UseNewChatWorkflowOptions = {
 	refreshTacticLibraryStatus: () => Promise<TacticsStatusResponse | null>;
@@ -59,19 +63,35 @@ export function useNewChatWorkflow(options: UseNewChatWorkflowOptions) {
 	}
 
 	function setTacticAllowed(tacticId: string, enabled: boolean) {
-		setSelectedTacticIds((current) =>
-			enabled
+		setSelectedTacticIds((current) => {
+			const next = enabled
 				? [...new Set([...current, tacticId])]
-				: current.filter((id) => id !== tacticId),
-		);
+				: current.filter((id) => id !== tacticId);
+			syncSessionStateForTactics(next);
+			return next;
+		});
 	}
 
 	function setStateEnabled(stateId: string, enabled: boolean) {
-		setSelectedStateIds((current) =>
-			enabled
+		setSelectedStateIds((current) => {
+			const required = requiredStateIdsForTactics(
+				selectedTacticIds,
+				availableTactics,
+			);
+			if (!enabled && required.includes(stateId)) {
+				setDraft((currentDraft) => ({ ...currentDraft, sessionState: true }));
+				return current;
+			}
+
+			const next = enabled
 				? [...new Set([...current, stateId])]
-				: current.filter((id) => id !== stateId),
-		);
+				: current.filter((id) => id !== stateId);
+			if (required.length > 0) {
+				setDraft((currentDraft) => ({ ...currentDraft, sessionState: true }));
+				return [...new Set([...next, ...required])];
+			}
+			return next;
+		});
 	}
 
 	async function startNewConversation() {
@@ -79,21 +99,20 @@ export function useNewChatWorkflow(options: UseNewChatWorkflowOptions) {
 		setError("");
 
 		try {
-			const missingStateIds = missingRequiredStateIds(
+			const requiredStateIds = requiredStateIdsForTactics(
 				selectedTacticIds,
-				selectedStateIds,
 				availableTactics,
 			);
-			if (missingStateIds.length > 0) {
-				throw new Error(
-					`Selected tactics require missing session states: ${missingStateIds.join(", ")}.`,
-				);
-			}
+			const sessionState = draft.sessionState || requiredStateIds.length > 0;
+			const enabledStateIds = sessionState
+				? [...new Set([...selectedStateIds, ...requiredStateIds])]
+				: [];
 			const created = await createConversation({
 				title: draft.title,
 				profile: toSessionProfile(draft),
-				allowedTacticIds: selectedTacticIds,
-				enabledStateIds: selectedStateIds,
+				capabilities: toSessionCapabilities({ ...draft, sessionState }),
+				allowedTacticIds: draft.tactics ? selectedTacticIds : [],
+				enabledStateIds,
 			});
 			options.onConversationCreated(created);
 			await options.onRefreshConversations();
@@ -123,28 +142,35 @@ export function useNewChatWorkflow(options: UseNewChatWorkflowOptions) {
 		setStateEnabled,
 		startNewConversation,
 	};
+
+	function syncSessionStateForTactics(tacticIds: string[]) {
+		const required = requiredStateIdsForTactics(tacticIds, availableTactics);
+		if (required.length === 0) {
+			return;
+		}
+
+		setDraft((current) => ({ ...current, sessionState: true }));
+		setSelectedStateIds((current) => [...new Set([...current, ...required])]);
+	}
 }
 
 function defaultNewChatDraftWithTitle(): NewChatDraft {
 	return {
 		title: "New chat",
 		...defaultNewChatDraft(),
+		...defaultSessionCapabilities,
 	};
 }
 
-function missingRequiredStateIds(
+function requiredStateIdsForTactics(
 	selectedTacticIds: string[],
-	selectedStateIds: string[],
 	tactics: TacticOverview[],
 ) {
-	const selectedStates = new Set(selectedStateIds);
 	return [
 		...new Set(
 			tactics
 				.filter((tactic) => selectedTacticIds.includes(tactic.id))
 				.flatMap((tactic) => tactic.requiredStateIds),
 		),
-	]
-		.filter((stateId) => !selectedStates.has(stateId))
-		.sort();
+	].sort();
 }

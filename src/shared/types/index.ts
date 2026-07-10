@@ -16,9 +16,17 @@ export type SessionProfile = {
 	assistantRole: string;
 };
 
+export type SessionCapabilities = {
+	tactics: boolean;
+	dayProgression: boolean;
+	sessionState: boolean;
+	sceneEvents: boolean;
+};
+
 export type CreateConversationRequest = {
 	title?: string;
 	profile?: SessionProfile;
+	capabilities?: SessionCapabilities;
 	allowedTacticIds?: string[];
 	enabledStateIds?: string[];
 };
@@ -31,6 +39,7 @@ export type ConversationSummary = {
 	id: string;
 	title: string;
 	profile: SessionProfile;
+	capabilities: SessionCapabilities;
 	createdAt: string;
 	updatedAt: string;
 	messageCount: number;
@@ -208,7 +217,7 @@ export type ChatResponse = {
 	tacticIds: string[];
 	compactionId?: string;
 	usage?: ChatUsage;
-	clock: SessionClock;
+	clock: SessionClock | null;
 	timelineItems: TimelineItem[];
 	createdItems: TimelineItem[];
 };
@@ -291,7 +300,7 @@ export type ConversationsResponse = {
 
 export type ConversationPayload = {
 	conversation: ConversationSummary;
-	clock: SessionClock;
+	clock: SessionClock | null;
 	timelineItems: TimelineItem[];
 };
 

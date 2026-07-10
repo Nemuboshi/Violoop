@@ -171,7 +171,12 @@ describe("fastify api app", () => {
 				streamResponse(
 					JSON.stringify({
 						messages: [{ kind: "chat", content: "Structured answer." }],
-						timelineActions: [{ kind: "scene", content: "Later scene." }],
+						runtimeActions: [
+							{
+								tool: "emit_scene",
+								arguments: { content: "Later scene." },
+							},
+						],
 					}),
 					{
 						prompt_tokens: 8,
@@ -204,6 +209,12 @@ describe("fastify api app", () => {
 					assistantName: "Ava",
 					userRole: "Visitor",
 					assistantRole: "Host",
+				},
+				capabilities: {
+					tactics: true,
+					dayProgression: true,
+					sessionState: true,
+					sceneEvents: true,
 				},
 				allowedTacticIds: ["calm"],
 			},
@@ -324,6 +335,199 @@ describe("fastify api app", () => {
 		});
 		expect(deleted.statusCode).toBe(200);
 		expect(deleted.json()).toEqual({ conversations: [] });
+
+		await app.close();
+	});
+
+	it("creates generic sessions without runtime setup and applies state runtime actions only when enabled", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				streamResponse(
+					JSON.stringify({
+						messages: [{ kind: "chat", content: "State noted." }],
+						runtimeActions: [
+							{
+								tool: "emit_scene",
+								arguments: { content: "Ignored scene." },
+							},
+							{
+								tool: "update_session_state",
+								arguments: {
+									patches: [
+										{ key: "urgency", delta: 3, reason: "clear signal" },
+										{ delta: 1, reason: "missing key ignored" },
+									],
+									note: "Updated from main reply.",
+								},
+							},
+						],
+					}),
+				),
+			),
+		);
+		const { buildApp } = await import("../../src/server/app");
+		const app = await buildApp({
+			corsOrigins: ["http://127.0.0.1:5173", "http://127.0.0.1:5174"],
+		});
+
+		const generic = await app.inject({
+			method: "POST",
+			url: "/api/conversations",
+			payload: {
+				title: "Generic",
+				capabilities: {
+					tactics: false,
+					dayProgression: false,
+					sessionState: false,
+					sceneEvents: false,
+				},
+			},
+		});
+		expect(generic.statusCode).toBe(200);
+		expect(generic.json()).toMatchObject({
+			clock: null,
+			timelineItems: [],
+			conversation: {
+				capabilities: {
+					tactics: false,
+					dayProgression: false,
+					sessionState: false,
+					sceneEvents: false,
+				},
+			},
+		});
+		const defaultCapabilities = await app.inject({
+			method: "POST",
+			url: "/api/conversations",
+			payload: { title: "Default capabilities" },
+		});
+		expect(defaultCapabilities.json()).toMatchObject({
+			conversation: {
+				capabilities: {
+					tactics: true,
+					dayProgression: false,
+					sessionState: false,
+					sceneEvents: false,
+				},
+			},
+		});
+		const restoredGeneric = await app.inject({
+			method: "GET",
+			url: `/api/conversations/${generic.json().conversation.id}/messages`,
+		});
+		expect(restoredGeneric.json()).toMatchObject({ clock: null });
+		const tacticalNoState = await app.inject({
+			method: "POST",
+			url: "/api/conversations",
+			payload: {
+				title: "Tactics only",
+				capabilities: {
+					tactics: true,
+					dayProgression: false,
+					sessionState: false,
+					sceneEvents: false,
+				},
+				allowedTacticIds: [],
+			},
+		});
+		expect(tacticalNoState.json()).toMatchObject({
+			clock: null,
+			timelineItems: [],
+		});
+		await app.inject({
+			method: "POST",
+			url: "/api/tactics/states",
+			payload: {
+				state: {
+					id: "urgency",
+					name: "Urgency",
+					defaultValue: 40,
+				},
+			},
+		});
+		await app.inject({
+			method: "PUT",
+			url: "/api/tactics/calm",
+			payload: {
+				tactic: {
+					id: "calm",
+					name: "Calm",
+					keywords: ["please"],
+					emotionRules: [{ key: "urgency", operator: ">=", value: 40 }],
+					blockedKeywords: [],
+					instruction: "Keep the answer calm.",
+				},
+			},
+		});
+		const autoState = await app.inject({
+			method: "POST",
+			url: "/api/conversations",
+			payload: {
+				title: "Auto state",
+				capabilities: {
+					tactics: true,
+					dayProgression: false,
+					sessionState: false,
+					sceneEvents: false,
+				},
+				allowedTacticIds: ["calm"],
+			},
+		});
+		expect(autoState.json()).toMatchObject({
+			conversation: { capabilities: { sessionState: true } },
+		});
+		const genericConversationId = generic.json().conversation.id as string;
+		await app.inject({
+			method: "POST",
+			url: "/api/chat",
+			payload: { conversationId: genericConversationId, message: "hello" },
+		});
+		const editedGeneric = await app.inject({
+			method: "POST",
+			url: "/api/chat/edit-last",
+			payload: { conversationId: genericConversationId, message: "edited" },
+		});
+		expect(editedGeneric.json()).toMatchObject({ clock: null });
+
+		const stateful = await app.inject({
+			method: "POST",
+			url: "/api/conversations",
+			payload: {
+				title: "Stateful",
+				capabilities: {
+					tactics: true,
+					dayProgression: false,
+					sessionState: true,
+					sceneEvents: false,
+				},
+				allowedTacticIds: [],
+				enabledStateIds: ["urgency"],
+			},
+		});
+		const conversationId = stateful.json().conversation.id as string;
+		const chat = await app.inject({
+			method: "POST",
+			url: "/api/chat",
+			payload: { conversationId, message: "note this" },
+		});
+		expect(chat.statusCode).toBe(200);
+		expect(chat.json()).toMatchObject({
+			clock: null,
+			createdItems: [{ kind: "chat", content: "State noted." }],
+		});
+		expect(
+			chat
+				.json()
+				.timelineItems.find(
+					(item: { kind: string }) => item.kind === "state_update",
+				),
+		).toMatchObject({
+			content: "Updated from main reply.",
+			metadata: {
+				patches: [{ key: "urgency", previousValue: 40, nextValue: 43 }],
+			},
+		});
 
 		await app.close();
 	});
@@ -472,7 +676,15 @@ describe("fastify api app", () => {
 		const { appendTimelineItem } = await import(
 			"../../src/server/conversations"
 		);
-		const manualConversation = await createConversation({ title: "Manual" });
+		const manualConversation = await createConversation({
+			title: "Manual",
+			capabilities: {
+				tactics: true,
+				dayProgression: true,
+				sessionState: false,
+				sceneEvents: false,
+			},
+		});
 		await appendTimelineItem({
 			conversationId: manualConversation.id,
 			kind: "day_transition",
@@ -543,11 +755,17 @@ describe("fastify api app", () => {
 				streamResponse(
 					JSON.stringify({
 						messages: [],
-						timelineActions: [
-							{ kind: "advance_day", content: "" },
-							{ kind: "scene", content: "Next day scene." },
-							{ kind: "scene", content: "" },
-							{ kind: "scene", content: "Too many." },
+						runtimeActions: [
+							{
+								tool: "advance_day",
+								arguments: { content: "", scene: "Advance scene." },
+							},
+							{
+								tool: "emit_scene",
+								arguments: { content: "Next day scene." },
+							},
+							{ tool: "emit_scene", arguments: { content: "" } },
+							{ tool: "emit_scene", arguments: { content: "Too many." } },
 						],
 					}),
 				),
@@ -569,9 +787,11 @@ describe("fastify api app", () => {
 				streamResponse(
 					JSON.stringify({
 						messages: [{ kind: "chat", content: "Before next day." }],
-						timelineActions: [
-							{ kind: "advance_day", content: "Day rises." },
-							{ kind: "scene", content: null },
+						runtimeActions: [
+							{
+								tool: "advance_day",
+								arguments: { content: "Day rises.", scene: null },
+							},
 						],
 					}),
 				),
@@ -772,11 +992,18 @@ describe("fastify api app", () => {
 			expect.arrayContaining([expect.objectContaining({ id: "direct" })]),
 		);
 
-		async function startConversation() {
+		async function startConversation(
+			capabilities = {
+				tactics: true,
+				dayProgression: false,
+				sessionState: false,
+				sceneEvents: true,
+			},
+		) {
 			const response = await app.inject({
 				method: "POST",
 				url: "/api/conversations",
-				payload: { title: "Fallback", allowedTacticIds: [] },
+				payload: { title: "Fallback", capabilities, allowedTacticIds: [] },
 			});
 			return response.json().conversation.id as string;
 		}
@@ -807,11 +1034,20 @@ describe("fastify api app", () => {
 		expect(await chat(await startConversation())).toMatchObject([
 			{ kind: "chat", content: "I could not produce a structured response." },
 		]);
-		expect(await chat(await startConversation())).toMatchObject([
+		expect(
+			await chat(
+				await startConversation({
+					tactics: true,
+					dayProgression: true,
+					sessionState: true,
+					sceneEvents: true,
+				}),
+			),
+		).toMatchObject([
 			{ kind: "chat", content: "I could not produce a structured response." },
 			{ kind: "day_transition", content: "Day 2" },
+			{ kind: "scene", content: "Advance scene.", metadata: { day: 2 } },
 			{ kind: "scene", content: "Next day scene.", metadata: { day: 2 } },
-			{ kind: "scene", content: "Too many.", metadata: { day: 2 } },
 		]);
 		for (
 			let attempt = 0;
@@ -825,7 +1061,16 @@ describe("fastify api app", () => {
 			{ kind: "chat", content: "One" },
 			{ kind: "chat", content: "Two" },
 		]);
-		expect(await chat(await startConversation())).toMatchObject([
+		expect(
+			await chat(
+				await startConversation({
+					tactics: true,
+					dayProgression: true,
+					sessionState: true,
+					sceneEvents: true,
+				}),
+			),
+		).toMatchObject([
 			{ kind: "chat", content: "Before next day." },
 			{ kind: "day_transition", content: "Day rises." },
 		]);

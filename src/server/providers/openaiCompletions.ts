@@ -204,35 +204,41 @@ function buildMessages(options: StreamChatOptions): OpenAiMessage[] {
 		.supportsDeveloperRole
 		? "developer"
 		: "system";
-	const promptMessages = options.promptBlocks
-		.filter((block) => block.content.trim())
-		.map((block) => ({
-			role: systemRole,
-			content: buildPromptBlockContent(options, block),
-		}));
+	const systemContent = buildSystemPromptContent(options);
+	const promptMessages: OpenAiMessage[] = systemContent
+		? [{ role: systemRole, content: systemContent }]
+		: [];
 
 	return [...promptMessages, ...options.messages];
 }
 
-function buildPromptBlockContent(
-	options: StreamChatOptions,
-	block: PromptBlock,
-): OpenAiContent {
-	if (
-		options.cache?.systemPrompt &&
-		options.provider.compat.cacheControlFormat === "anthropic" &&
-		block.cacheScope
-	) {
-		return [
-			{
-				type: "text",
-				text: block.content,
-				cache_control: { type: "ephemeral" },
-			},
-		];
+function buildSystemPromptContent(options: StreamChatOptions): OpenAiContent {
+	const blocks = options.promptBlocks.filter((block) => block.content.trim());
+	if (blocks.length === 0) {
+		return "";
 	}
 
-	return block.content;
+	if (
+		options.cache?.systemPrompt &&
+		options.provider.compat.cacheControlFormat === "anthropic"
+	) {
+		return blocks.map((block) => buildPromptBlockContent(block));
+	}
+
+	return blocks.map((block) => block.content).join("\n\n");
+}
+
+function buildPromptBlockContent(block: PromptBlock) {
+	return block.cacheScope
+		? {
+				type: "text" as const,
+				text: block.content,
+				cache_control: { type: "ephemeral" as const },
+			}
+		: {
+				type: "text" as const,
+				text: block.content,
+			};
 }
 
 function parseStreamLine(line: string) {

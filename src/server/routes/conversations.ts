@@ -4,6 +4,7 @@ import type {
 	ConversationsResponse,
 	CreateConversationRequest,
 	RenameConversationRequest,
+	SessionCapabilities,
 } from "../../shared/types";
 import { loadConfig, resolveActiveProvider } from "../config";
 import {
@@ -18,7 +19,9 @@ import { HttpError } from "../httpErrors";
 import { getProviderAdapter } from "../providers";
 import { createOpeningTimeline, ensureSessionClock } from "../runtime";
 import {
+	ensureSessionUserState,
 	initializeSessionTactics,
+	requiredStateIdsForTacticSelection,
 	validateTacticStateSelection,
 } from "../tactics";
 
@@ -37,20 +40,41 @@ export async function registerConversationRoutes(app: FastifyInstance) {
 			const config = await loadConfig();
 			const provider = resolveActiveProvider(config);
 			const adapter = getProviderAdapter(provider.api);
-			await validateTacticStateSelection(
-				body.allowedTacticIds,
-				body.enabledStateIds,
-			);
+			const requiredStateIds = body.capabilities?.tactics
+				? await requiredStateIdsForTacticSelection(body.allowedTacticIds)
+				: [];
+			const sessionStateEnabled =
+				body.capabilities?.sessionState === true || requiredStateIds.length > 0;
+			const enabledStateIds = sessionStateEnabled
+				? mergeStateIds(body.enabledStateIds, requiredStateIds)
+				: [];
 			const conversation = await createConversation({
 				title: body.title,
 				profile: body.profile,
+				capabilities: normalizeRequestedCapabilities(
+					body.capabilities,
+					sessionStateEnabled,
+				),
 			});
-			await initializeSessionTactics(
-				conversation.id,
-				body.allowedTacticIds,
-				body.enabledStateIds,
-			);
-			const clock = await ensureSessionClock(conversation.id);
+			if (conversation.capabilities.tactics) {
+				await validateTacticStateSelection(
+					body.allowedTacticIds,
+					enabledStateIds,
+				);
+				await initializeSessionTactics(
+					conversation.id,
+					body.allowedTacticIds,
+					enabledStateIds,
+				);
+			} else {
+				await initializeSessionTactics(conversation.id, [], []);
+			}
+			if (conversation.capabilities.sessionState) {
+				await ensureSessionUserState(conversation.id, enabledStateIds);
+			}
+			const clock = conversation.capabilities.dayProgression
+				? await ensureSessionClock(conversation.id)
+				: null;
 			const timelineItems = await createOpeningTimeline({
 				conversation,
 				config,
@@ -75,7 +99,9 @@ export async function registerConversationRoutes(app: FastifyInstance) {
 
 			return {
 				conversation,
-				clock: await ensureSessionClock(conversationId),
+				clock: conversation.capabilities.dayProgression
+					? await ensureSessionClock(conversationId)
+					: null,
 				timelineItems: await listTimelineItems(conversationId),
 			};
 		},
@@ -99,4 +125,23 @@ export async function registerConversationRoutes(app: FastifyInstance) {
 			return { conversations: await listConversations() };
 		},
 	);
+}
+
+function mergeStateIds(
+	stateIds: string[] | undefined,
+	requiredStateIds: string[],
+) {
+	return [...new Set([...(stateIds ?? []), ...requiredStateIds])];
+}
+
+function normalizeRequestedCapabilities(
+	capabilities: SessionCapabilities | undefined,
+	sessionState: boolean,
+): SessionCapabilities {
+	return {
+		tactics: capabilities?.tactics ?? true,
+		dayProgression: capabilities?.dayProgression ?? false,
+		sessionState,
+		sceneEvents: capabilities?.sceneEvents ?? false,
+	};
 }

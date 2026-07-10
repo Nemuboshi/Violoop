@@ -33,6 +33,12 @@ const conversation = {
 	id: "c1",
 	title: "Morning",
 	profile,
+	capabilities: {
+		tactics: true,
+		dayProgression: true,
+		sessionState: true,
+		sceneEvents: true,
+	},
 	createdAt: "2026-01-01T00:00:00.000Z",
 	updatedAt: "2026-01-01T00:00:00.000Z",
 	messageCount: 2,
@@ -137,7 +143,15 @@ describe("chat page composition model", () => {
 
 		act(() => {
 			result.current.chatSession.applyConversation({
-				conversation,
+				conversation: {
+					...conversation,
+					capabilities: {
+						tactics: false,
+						dayProgression: false,
+						sessionState: false,
+						sceneEvents: false,
+					},
+				},
 				clock,
 				timelineItems: [],
 			});
@@ -151,6 +165,27 @@ describe("chat page composition model", () => {
 			baseUrlLabel: "local API proxy",
 			cacheLabel: "Usage tracking off",
 			usage: null,
+		});
+		expect(result.current.sidebarView.tactics).toMatchObject({
+			day: null,
+			allowed: [],
+			userState: [],
+		});
+
+		act(() => {
+			result.current.chatSession.applyConversation({
+				conversation: {
+					...conversation,
+					capabilities: {
+						tactics: true,
+						dayProgression: true,
+						sessionState: true,
+						sceneEvents: false,
+					},
+				},
+				clock: null,
+				timelineItems: [],
+			});
 		});
 		expect(result.current.sidebarView.tactics).toMatchObject({
 			day: null,

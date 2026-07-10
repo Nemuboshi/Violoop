@@ -22,10 +22,12 @@ import { assembleChatPrompt } from "../promptAssembly";
 import { getProviderAdapter } from "../providers";
 import {
 	advanceDay,
+	appendSceneEvent,
+	applySessionStatePatches,
 	ensureSessionClock,
 	scheduleDailyStateUpdate,
 } from "../runtime";
-import { selectTactics } from "../tactics";
+import { listUserState, selectTactics } from "../tactics";
 import { logUsage, storeUsage } from "./usageStore";
 
 type StructuredChatResult = {
@@ -36,6 +38,19 @@ type StructuredChatResult = {
 	timelineActions?: Array<{
 		kind?: "advance_day" | "scene";
 		content?: string;
+	}>;
+	runtimeActions?: Array<{
+		tool?: "advance_day" | "emit_scene" | "update_session_state";
+		arguments?: {
+			content?: string;
+			scene?: string;
+			patches?: Array<{
+				key?: string;
+				delta?: number;
+				reason?: string;
+			}>;
+			note?: string;
+		};
 	}>;
 };
 
@@ -84,11 +99,13 @@ export async function editLastUserMessage(
 		conversationId: conversation.id,
 		itemId: lastUserMessage.item.id,
 	});
-	await setSessionClock({
-		conversationId: conversation.id,
-		day: lastUserMessage.day,
-		updatedAt: new Date().toISOString(),
-	});
+	if (conversation.capabilities.dayProgression) {
+		await setSessionClock({
+			conversationId: conversation.id,
+			day: lastUserMessage.day,
+			updatedAt: new Date().toISOString(),
+		});
+	}
 
 	return generateAssistantTurn({
 		conversation,
@@ -130,15 +147,20 @@ async function generateAssistantTurn(input: {
 	const provider = resolveActiveProvider(config);
 	const adapter = getProviderAdapter(provider.api);
 	const conversationId = input.conversation.id;
-	const clock = await ensureSessionClock(conversationId);
+	const clock = input.conversation.capabilities.dayProgression
+		? await ensureSessionClock(conversationId)
+		: null;
 	const promptContext = await loadPromptContext(conversationId);
-	const tacticSelection = await selectTactics({
-		conversationId,
-		message: input.userContent,
-	});
+	const tacticSelection = input.conversation.capabilities.tactics
+		? await selectTactics({
+				conversationId,
+				message: input.userContent,
+			})
+		: { loaded: [], decisions: [], states: [] };
 	const prompt = assembleChatPrompt({
 		globalSystemPrompt: config.chat.systemPrompt,
 		profile: input.conversation.profile,
+		capabilities: input.conversation.capabilities,
 		clock,
 		timeline: promptContext.messages,
 		summary: promptContext.summary,
@@ -169,12 +191,16 @@ async function generateAssistantTurn(input: {
 	const createdItems = await applyStructuredChatResult({
 		conversationId,
 		assistantName: input.conversation.profile.assistantName,
-		currentDay: clock.day,
+		capabilities: input.conversation.capabilities,
+		currentDay: clock?.day,
 		result: structured,
 		usage: assistantUsage,
 	});
 
-	if (createdItems.some((item) => item.kind === "day_transition")) {
+	if (
+		input.conversation.capabilities.sessionState &&
+		createdItems.some((item) => item.kind === "day_transition")
+	) {
 		scheduleDailyStateUpdate({
 			conversationId,
 			config,
@@ -195,7 +221,9 @@ async function generateAssistantTurn(input: {
 		conversationId,
 		tacticIds: tacticSelection.loaded.map((tactic) => tactic.id),
 		usage: assistantUsage,
-		clock: await ensureSessionClock(conversationId),
+		clock: input.conversation.capabilities.dayProgression
+			? await ensureSessionClock(conversationId)
+			: null,
 		timelineItems: await listTimelineItems(conversationId),
 		createdItems,
 	};
@@ -229,20 +257,24 @@ function findLastUserMessageWithDay(timeline: TimelineItem[]) {
 async function applyStructuredChatResult(input: {
 	conversationId: string;
 	assistantName: string;
-	currentDay: number;
+	capabilities: ConversationSummary["capabilities"];
+	currentDay?: number;
 	result: StructuredChatResult;
 	usage?: ChatUsage;
 }) {
 	const createdItems = [];
-	const actions = Array.isArray(input.result.timelineActions)
-		? input.result.timelineActions
+	const actions = Array.isArray(input.result.runtimeActions)
+		? input.result.runtimeActions
 		: [];
 	const scenes = actions
-		.filter((action) => action.kind === "scene")
-		.map((action) => sanitizeGeneratedContent(action.content, 800))
+		.filter((action) => action.tool === "emit_scene")
+		.map((action) => sanitizeGeneratedContent(action.arguments?.content, 800))
 		.filter(Boolean)
 		.slice(0, 2);
-	const advance = actions.find((action) => action.kind === "advance_day");
+	const advance = actions.find((action) => action.tool === "advance_day");
+	const stateUpdate = actions.find(
+		(action) => action.tool === "update_session_state",
+	);
 
 	const messages = sanitizeAssistantMessages(input.result.messages);
 	if (messages.length === 0) {
@@ -263,27 +295,43 @@ async function applyStructuredChatResult(input: {
 		);
 	}
 
-	if (advance) {
+	let advancedDay: number | undefined;
+	if (advance && input.capabilities.dayProgression && input.currentDay) {
 		const transition =
-			sanitizeGeneratedContent(advance.content, 800) ||
+			sanitizeGeneratedContent(advance.arguments?.content, 800) ||
 			`Day ${input.currentDay + 1}`;
 		createdItems.push(
 			await advanceDay(input.conversationId, input.currentDay, transition),
 		);
+		advancedDay = input.currentDay + 1;
 	}
 
-	for (const scene of scenes) {
+	const advanceScene = sanitizeGeneratedContent(advance?.arguments?.scene, 800);
+	const allowedScenes = input.capabilities.sceneEvents
+		? [...(advanceScene ? [advanceScene] : []), ...scenes].slice(0, 2)
+		: [];
+	for (const scene of allowedScenes) {
 		createdItems.push(
-			await appendTimelineItem({
+			await appendSceneEvent({
 				conversationId: input.conversationId,
-				kind: "scene",
-				role: "system",
-				speakerName: "Scene",
 				content: scene,
-				promptVisibility: "context",
-				metadata: { day: advance ? input.currentDay + 1 : input.currentDay },
+				day: advancedDay ?? input.currentDay,
 			}),
 		);
+	}
+
+	if (stateUpdate && input.capabilities.sessionState) {
+		await applySessionStatePatches({
+			conversationId: input.conversationId,
+			day: advancedDay ?? input.currentDay,
+			states: await listUserState(input.conversationId),
+			patches: stateUpdate.arguments?.patches?.map((patch) => ({
+				key: String(patch.key ?? ""),
+				delta: Number(patch.delta),
+				reason: patch.reason,
+			})),
+			stateNote: stateUpdate.arguments?.note,
+		});
 	}
 
 	return createdItems;

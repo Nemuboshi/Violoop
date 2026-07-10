@@ -164,19 +164,17 @@ describe("openai completions provider adapter", () => {
 							text: "Stable",
 							cache_control: { type: "ephemeral" },
 						},
-					],
-				},
-				{
-					role: "developer",
-					content: [
 						{
 							type: "text",
 							text: "Session",
 							cache_control: { type: "ephemeral" },
 						},
+						{
+							type: "text",
+							text: "Dynamic",
+						},
 					],
 				},
-				{ role: "developer", content: "Dynamic" },
 				{ role: "user", content: "Hello" },
 			],
 		});
@@ -214,6 +212,18 @@ describe("openai completions provider adapter", () => {
 		expect(requests[0].body.prompt_cache_retention).toBeUndefined();
 		expect(requests[0].body.messages).toEqual([
 			{ role: "system", content: "System" },
+			{ role: "user", content: "Hello" },
+		]);
+	});
+
+	it("omits the system message when no prompt blocks have content", async () => {
+		installFetch(
+			streamResponse(['data: {"choices":[{"delta":{"content":"OK"}}]}']),
+		);
+
+		await collect(options({ promptBlocks: [] }));
+
+		expect(requests[0].body.messages).toEqual([
 			{ role: "user", content: "Hello" },
 		]);
 	});

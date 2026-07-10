@@ -171,23 +171,33 @@ export async function validateTacticStateSelection(
 ) {
 	const allTactics = await loadTactics();
 	const stateDefinitions = await loadStateDefinitions();
-	const allTacticIds = allTactics.map((tactic) => tactic.id);
-	const requestedIds = allowedTacticIds ?? allTacticIds;
-	const selectedIds = allTacticIds.filter((tacticId) =>
-		requestedIds.includes(tacticId),
-	);
+	const selectedIds = selectedTacticIds(allTactics, allowedTacticIds);
 	const selectedStateIds =
 		enabledStateIds ?? stateDefinitions.map((definition) => definition.id);
 	const selectedStateIdSet = new Set(selectedStateIds);
-	const missingStateIds = requiredStateIdsForTactics(
-		allTactics.filter((tactic) => selectedIds.includes(tactic.id)),
-	).filter((stateId) => !selectedStateIdSet.has(stateId));
+	const requiredStateIds = requiredStateIdsForSelectedTactics(
+		allTactics,
+		selectedIds,
+	);
+	const missingStateIds = requiredStateIds.filter(
+		(stateId) => !selectedStateIdSet.has(stateId),
+	);
 	if (missingStateIds.length > 0) {
 		throw new Error(
 			`Selected tactics require missing session states: ${missingStateIds.join(", ")}.`,
 		);
 	}
 	return selectedStateIds;
+}
+
+export async function requiredStateIdsForTacticSelection(
+	allowedTacticIds?: string[],
+) {
+	const allTactics = await loadTactics();
+	return requiredStateIdsForSelectedTactics(
+		allTactics,
+		selectedTacticIds(allTactics, allowedTacticIds),
+	);
 }
 
 export async function createTactic(draft: Tactic) {
@@ -604,6 +614,21 @@ function requiredStateIdsForTactics(
 	tactics: Array<Pick<Tactic, "emotionRules">>,
 ) {
 	return [...new Set(tactics.flatMap(requiredStateIds))].sort();
+}
+
+function selectedTacticIds(tactics: Tactic[], allowedTacticIds?: string[]) {
+	const allTacticIds = tactics.map((tactic) => tactic.id);
+	const requestedIds = allowedTacticIds ?? allTacticIds;
+	return allTacticIds.filter((tacticId) => requestedIds.includes(tacticId));
+}
+
+function requiredStateIdsForSelectedTactics(
+	tactics: Tactic[],
+	selectedIds: string[],
+) {
+	return requiredStateIdsForTactics(
+		tactics.filter((tactic) => selectedIds.includes(tactic.id)),
+	);
 }
 
 function isNotFoundError(error: unknown) {

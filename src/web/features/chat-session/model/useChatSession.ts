@@ -5,7 +5,9 @@ import {
 } from "../../../entities/conversation";
 import type { ChatUsage, TimelineItem } from "../../../entities/message";
 import {
+	defaultSessionCapabilities,
 	defaultSessionProfile,
+	type SessionCapabilities,
 	type SessionClock,
 	type SessionProfile,
 } from "../../../entities/session";
@@ -37,6 +39,8 @@ export function useChatSession() {
 	const [activeProfile, setActiveProfile] = useState<SessionProfile>(
 		defaultSessionProfile,
 	);
+	const [activeCapabilities, setActiveCapabilities] =
+		useState<SessionCapabilities>(defaultSessionCapabilities);
 	const [activeClock, setActiveClock] = useState<SessionClock | null>(null);
 
 	const canSend =
@@ -62,6 +66,7 @@ export function useChatSession() {
 	function resetSession() {
 		setActiveConversationId(null);
 		setActiveProfile(defaultSessionProfile);
+		setActiveCapabilities(defaultSessionCapabilities);
 		setActiveClock(null);
 		setMessages([]);
 		setLastUsage(null);
@@ -76,6 +81,7 @@ export function useChatSession() {
 	function applyConversation(payload: ConversationPayload) {
 		setActiveConversationId(payload.conversation.id);
 		setActiveProfile(payload.conversation.profile);
+		setActiveCapabilities(payload.conversation.capabilities);
 		setActiveClock(payload.clock);
 		setMessages(payload.timelineItems);
 		setError("");
@@ -99,6 +105,7 @@ export function useChatSession() {
 		const restored = await fetchConversation(conversationId);
 		setActiveConversationId(conversationId);
 		setActiveProfile(restored.conversation.profile);
+		setActiveCapabilities(restored.conversation.capabilities);
 		setActiveClock(restored.clock);
 		setMessages(restored.timelineItems);
 		setError("");
@@ -275,6 +282,7 @@ export function useChatSession() {
 		lastEditableUserMessageId,
 		activeConversationId,
 		activeProfile,
+		activeCapabilities,
 		activeClock,
 		setActiveClock,
 		canSend,

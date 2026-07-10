@@ -51,6 +51,13 @@ function provider(): ActiveProvider {
 	};
 }
 
+const allCapabilities = {
+	tactics: true,
+	dayProgression: true,
+	sessionState: true,
+	sceneEvents: true,
+};
+
 function adapterReturning(
 	...events: ChatStreamEvent[]
 ): ChatProviderAdapter & { calls: unknown[] } {
@@ -80,6 +87,7 @@ describe("session runtime", () => {
 		const runtime = await import("../../src/server/runtime");
 		const conversation = await conversations.createConversation({
 			title: "Opening",
+			capabilities: allCapabilities,
 			profile: {
 				assistantName: "Ava",
 				userRole: "Visitor",
@@ -135,6 +143,7 @@ describe("session runtime", () => {
 		const runtime = await import("../../src/server/runtime");
 		const conversation = await conversations.createConversation({
 			title: "Invalid opening",
+			capabilities: allCapabilities,
 		});
 		const adapter = adapterReturning({ type: "text", text: "not json" });
 
@@ -150,6 +159,54 @@ describe("session runtime", () => {
 			kind: "day_transition",
 			content: "Day 1",
 		});
+	});
+
+	it("keeps generic sessions free of opening runtime items and supports scene-only openings", async () => {
+		const conversations = await import("../../src/server/conversations");
+		const runtime = await import("../../src/server/runtime");
+		const generic = await conversations.createConversation({
+			title: "Generic",
+		});
+		const unusedAdapter = adapterReturning({ type: "text", text: "unused" });
+
+		await expect(
+			runtime.createOpeningTimeline({
+				conversation: generic,
+				config: config(),
+				provider: provider(),
+				adapter: unusedAdapter,
+			}),
+		).resolves.toEqual([]);
+		expect(unusedAdapter.calls).toHaveLength(0);
+
+		const sceneOnly = await conversations.createConversation({
+			title: "Scene only",
+			capabilities: {
+				tactics: true,
+				dayProgression: false,
+				sessionState: false,
+				sceneEvents: true,
+			},
+		});
+		const sceneAdapter = adapterReturning({
+			type: "text",
+			text: '{"scenes":["Scene without day."]}',
+		});
+
+		await expect(
+			runtime.createOpeningTimeline({
+				conversation: sceneOnly,
+				config: config(),
+				provider: provider(),
+				adapter: sceneAdapter,
+			}),
+		).resolves.toMatchObject([
+			{
+				kind: "scene",
+				content: "Scene without day.",
+				metadata: undefined,
+			},
+		]);
 	});
 
 	it("reuses an existing session clock and skips state updates already done for the current day", async () => {
@@ -343,6 +400,61 @@ describe("session runtime", () => {
 		});
 	});
 
+	it("applies direct session state tool patches without requiring a day", async () => {
+		const conversations = await import("../../src/server/conversations");
+		const tactics = await import("../../src/server/tactics");
+		const runtime = await import("../../src/server/runtime");
+		const conversation = await conversations.createConversation({
+			title: "Direct state",
+		});
+		const states = [
+			{
+				key: "urgency",
+				value: 10,
+				source: "inferred" as const,
+				confidence: 0.2,
+				updatedAt: "2026-01-01T00:00:00.000Z",
+			},
+		];
+		await tactics.setUserState(conversation.id, states);
+
+		await expect(
+			runtime.applySessionStatePatches({
+				conversationId: conversation.id,
+				states,
+				patches: [{ key: "urgency", delta: 2 }],
+			}),
+		).resolves.toEqual([
+			{
+				key: "urgency",
+				previousValue: 10,
+				nextValue: 12,
+				delta: 2,
+				reason: "",
+			},
+		]);
+		expect(
+			(await conversations.listTimelineItems(conversation.id)).at(-1),
+		).toMatchObject({
+			kind: "state_update",
+			content: "Session state updated.",
+			metadata: { patches: [{ key: "urgency", nextValue: 12 }] },
+		});
+
+		await runtime.applySessionStatePatches({
+			conversationId: conversation.id,
+			day: 2,
+			states,
+			patches: [],
+		});
+		expect(
+			(await conversations.listTimelineItems(conversation.id)).at(-1),
+		).toMatchObject({
+			kind: "state_update",
+			content: "Day 2 state updated.",
+		});
+	});
+
 	it("falls back to no runtime changes when the state model does not return JSON", async () => {
 		const conversations = await import("../../src/server/conversations");
 		const runtime = await import("../../src/server/runtime");
@@ -463,6 +575,7 @@ describe("session runtime", () => {
 		const runtime = await import("../../src/server/runtime");
 		const opening = await conversations.createConversation({
 			title: "Opening bad object",
+			capabilities: allCapabilities,
 		});
 		await expect(
 			runtime.createOpeningTimeline({

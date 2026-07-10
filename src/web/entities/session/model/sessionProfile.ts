@@ -1,4 +1,7 @@
-import type { SessionProfile } from "../../../../shared/types";
+import type {
+	SessionCapabilities,
+	SessionProfile,
+} from "../../../../shared/types";
 import { normalizeSingleLine } from "../../../shared/lib";
 
 export const defaultSessionProfile: SessionProfile = {
@@ -7,11 +10,29 @@ export const defaultSessionProfile: SessionProfile = {
 	assistantRole: "A concise assistant that answers directly.",
 };
 
+export const defaultSessionCapabilities: SessionCapabilities = {
+	tactics: true,
+	dayProgression: false,
+	sessionState: false,
+	sceneEvents: false,
+};
+
 export function defaultNewChatDraft(): SessionProfile {
 	return {
 		assistantName: defaultSessionProfile.assistantName,
 		userRole: defaultSessionProfile.userRole,
 		assistantRole: defaultSessionProfile.assistantRole,
+	};
+}
+
+export function toSessionCapabilities(
+	draft: SessionCapabilities,
+): SessionCapabilities {
+	return {
+		tactics: Boolean(draft.tactics),
+		dayProgression: Boolean(draft.dayProgression),
+		sessionState: Boolean(draft.sessionState),
+		sceneEvents: Boolean(draft.sceneEvents),
 	};
 }
 

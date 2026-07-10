@@ -859,6 +859,7 @@ describe("web components", () => {
 		const user = userEvent.setup();
 		const onDraftChange = vi.fn();
 		const onToggle = vi.fn();
+		const onStateToggle = vi.fn();
 		const onStart = vi.fn();
 
 		render(
@@ -869,6 +870,10 @@ describe("web components", () => {
 					assistantName: "Ava",
 					userRole: "User",
 					assistantRole: "Assistant",
+					tactics: true,
+					dayProgression: false,
+					sessionState: true,
+					sceneEvents: false,
 				}}
 				error="Choose carefully"
 				saving={false}
@@ -890,7 +895,7 @@ describe("web components", () => {
 				onDraftChange={onDraftChange}
 				onOpenChange={vi.fn()}
 				onStart={onStart}
-				onStateToggle={vi.fn()}
+				onStateToggle={onStateToggle}
 				onToggle={onToggle}
 			/>,
 		);
@@ -899,15 +904,144 @@ describe("web components", () => {
 		await user.type(screen.getByLabelText("Violoop name"), "!");
 		await user.type(screen.getByLabelText("Your role in this chat"), "!");
 		await user.type(screen.getByLabelText("Violoop role in this chat"), "!");
+		await user.click(screen.getByRole("checkbox", { name: "Tactics" }));
+		await user.click(screen.getByRole("checkbox", { name: "Day progression" }));
+		await user.click(screen.getByRole("checkbox", { name: "Session state" }));
+		await user.click(screen.getByRole("checkbox", { name: "Scene events" }));
 		await user.click(screen.getByRole("checkbox", { name: "Calm" }));
 		await user.click(
 			screen.getByRole("checkbox", { name: "Urgency / required" }),
 		);
+		await user.click(screen.getByRole("checkbox", { name: "Session state" }));
 		await user.click(screen.getByRole("button", { name: "Start chat" }));
 		expect(onDraftChange).toHaveBeenCalled();
 		expect(onToggle).toHaveBeenCalledWith("calm", false);
+		expect(onStateToggle).toHaveBeenCalledWith("urgency", true);
+		expect(onDraftChange).toHaveBeenCalledWith(
+			expect.objectContaining({ sessionState: true }),
+		);
 		expect(onStart).toHaveBeenCalled();
 		expect(screen.getByText("Choose carefully")).toBeInTheDocument();
+	});
+
+	it("shows disabled runtime sections for generic new chats", () => {
+		render(
+			<NewChatModal
+				open={true}
+				draft={{
+					title: "Generic",
+					assistantName: "Violoop",
+					userRole: "User",
+					assistantRole: "Assistant",
+					tactics: false,
+					dayProgression: false,
+					sessionState: false,
+					sceneEvents: false,
+				}}
+				error=""
+				saving={false}
+				selectedTacticIds={[]}
+				tactics={[
+					{
+						id: "calm",
+						name: "Calm",
+						keywords: [],
+						emotionRules: [],
+						blockedKeywords: [],
+						instruction: "Stay calm.",
+						allowedInSession: false,
+						requiredStateIds: [],
+					},
+				]}
+				stateDefinitions={stateDefinitions}
+				selectedStateIds={[]}
+				onDraftChange={vi.fn()}
+				onOpenChange={vi.fn()}
+				onStart={vi.fn()}
+				onStateToggle={vi.fn()}
+				onToggle={vi.fn()}
+			/>,
+		);
+
+		expect(
+			screen.getByText("Tactics are disabled for this session."),
+		).toBeInTheDocument();
+		expect(
+			screen.getByText("Session state is disabled for this session."),
+		).toBeInTheDocument();
+	});
+
+	it("shows an empty-state message when session state is enabled without definitions", () => {
+		render(
+			<NewChatModal
+				open={true}
+				draft={{
+					title: "Stateful",
+					assistantName: "Violoop",
+					userRole: "User",
+					assistantRole: "Assistant",
+					tactics: true,
+					dayProgression: false,
+					sessionState: true,
+					sceneEvents: false,
+				}}
+				error=""
+				saving={false}
+				selectedTacticIds={[]}
+				tactics={[]}
+				stateDefinitions={[]}
+				selectedStateIds={[]}
+				onDraftChange={vi.fn()}
+				onOpenChange={vi.fn()}
+				onStart={vi.fn()}
+				onStateToggle={vi.fn()}
+				onToggle={vi.fn()}
+			/>,
+		);
+
+		expect(
+			screen.getByText("No session states are configured."),
+		).toBeInTheDocument();
+	});
+
+	it("allows non-required session states to be toggled normally", async () => {
+		const user = userEvent.setup();
+		const onDraftChange = vi.fn();
+		const onStateToggle = vi.fn();
+		render(
+			<NewChatModal
+				open={true}
+				draft={{
+					title: "Stateful",
+					assistantName: "Violoop",
+					userRole: "User",
+					assistantRole: "Assistant",
+					tactics: true,
+					dayProgression: false,
+					sessionState: true,
+					sceneEvents: false,
+				}}
+				error=""
+				saving={false}
+				selectedTacticIds={[]}
+				tactics={[]}
+				stateDefinitions={stateDefinitions}
+				selectedStateIds={["urgency"]}
+				onDraftChange={onDraftChange}
+				onOpenChange={vi.fn()}
+				onStart={vi.fn()}
+				onStateToggle={onStateToggle}
+				onToggle={vi.fn()}
+			/>,
+		);
+
+		await user.click(screen.getByRole("checkbox", { name: "Session state" }));
+		await user.click(screen.getByRole("checkbox", { name: "Urgency" }));
+
+		expect(onDraftChange).toHaveBeenCalledWith(
+			expect.objectContaining({ sessionState: false }),
+		);
+		expect(onStateToggle).toHaveBeenCalledWith("urgency", false);
 	});
 
 	it("edits provider settings and requests provider tests before saving", async () => {

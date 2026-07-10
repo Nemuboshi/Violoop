@@ -34,6 +34,10 @@ type NewChatModalProps = {
 export function NewChatModal(props: NewChatModalProps) {
 	const update = (patch: Partial<NewChatDraft>) =>
 		props.onDraftChange({ ...props.draft, ...patch });
+	const tacticsEnabled = props.draft.tactics !== false;
+	const dayProgressionEnabled = props.draft.dayProgression === true;
+	const sessionStateEnabled = props.draft.sessionState === true;
+	const sceneEventsEnabled = props.draft.sceneEvents === true;
 	const requiredStateIds = new Set(
 		props.tactics
 			.filter((tactic) => props.selectedTacticIds.includes(tactic.id))
@@ -95,6 +99,44 @@ export function NewChatModal(props: NewChatModalProps) {
 							<div className="grid gap-3 border-t border-neutral-950 pt-4">
 								<div>
 									<h3 className="text-sm font-semibold text-ink">
+										Session runtime
+									</h3>
+									<p className="mt-1 text-xs text-muted">
+										Runtime tools are locked after the session starts.
+									</p>
+								</div>
+								<div className="grid gap-2">
+									<Checkbox
+										label="Tactics"
+										checked={tacticsEnabled}
+										onChange={(tactics) => update({ tactics })}
+									/>
+									<Checkbox
+										label="Day progression"
+										checked={dayProgressionEnabled}
+										onChange={(dayProgression) => update({ dayProgression })}
+									/>
+									<Checkbox
+										label="Session state"
+										checked={sessionStateEnabled}
+										onChange={(sessionState) =>
+											update({
+												sessionState:
+													requiredStateIds.size > 0 ? true : sessionState,
+											})
+										}
+									/>
+									<Checkbox
+										label="Scene events"
+										checked={sceneEventsEnabled}
+										onChange={(sceneEvents) => update({ sceneEvents })}
+									/>
+								</div>
+							</div>
+
+							<div className="grid gap-3 border-t border-neutral-950 pt-4">
+								<div>
+									<h3 className="text-sm font-semibold text-ink">
 										Allowed tactics
 									</h3>
 									<p className="mt-1 text-xs text-muted">
@@ -102,7 +144,11 @@ export function NewChatModal(props: NewChatModalProps) {
 									</p>
 								</div>
 								<div className="grid gap-2">
-									{props.tactics.length === 0 ? (
+									{!tacticsEnabled ? (
+										<p className="border border-neutral-950 bg-white px-3 py-3 text-sm text-neutral-600">
+											Tactics are disabled for this session.
+										</p>
+									) : props.tactics.length === 0 ? (
 										<p className="border border-neutral-950 bg-white px-3 py-3 text-sm text-neutral-600">
 											No tactics are available.
 										</p>
@@ -129,10 +175,17 @@ export function NewChatModal(props: NewChatModalProps) {
 									<p className="mt-1 text-xs text-muted">
 										Enabled states are initialized for this session. Required
 										states come from the selected tactics.
+										{requiredStateIds.size > 0
+											? " Session state is required by selected tactics."
+											: ""}
 									</p>
 								</div>
 								<div className="grid gap-2">
-									{props.stateDefinitions.length === 0 ? (
+									{!sessionStateEnabled ? (
+										<p className="border border-neutral-950 bg-white px-3 py-3 text-sm text-neutral-600">
+											Session state is disabled for this session.
+										</p>
+									) : props.stateDefinitions.length === 0 ? (
 										<p className="border border-neutral-950 bg-white px-3 py-3 text-sm text-neutral-600">
 											No session states are configured.
 										</p>
@@ -145,7 +198,10 @@ export function NewChatModal(props: NewChatModalProps) {
 													label={`${state.name}${required ? " / required" : ""}`}
 													checked={props.selectedStateIds.includes(state.id)}
 													onChange={(checked) =>
-														props.onStateToggle(state.id, checked)
+														props.onStateToggle(
+															state.id,
+															required ? true : checked,
+														)
 													}
 												/>
 											);

@@ -52,7 +52,11 @@ export async function createConversation(
 	input: Required<
 		Pick<
 			CreateConversationRequest,
-			"title" | "profile" | "allowedTacticIds" | "enabledStateIds"
+			| "title"
+			| "profile"
+			| "capabilities"
+			| "allowedTacticIds"
+			| "enabledStateIds"
 		>
 	>,
 ) {
@@ -70,7 +74,11 @@ export async function createConversation(
 					: `Conversation create failed with ${status}`,
 		},
 	);
-	if (!payload.conversation || !payload.clock || !payload.timelineItems) {
+	if (
+		!payload.conversation ||
+		payload.clock === undefined ||
+		!payload.timelineItems
+	) {
 		throw new Error("Conversation create response was empty.");
 	}
 	return payload as ConversationPayload;
@@ -84,7 +92,11 @@ export async function fetchConversation(conversationId: string) {
 			errorMessage: (status) => `Conversation request failed with ${status}`,
 		},
 	);
-	if (!payload.conversation || !payload.clock || !payload.timelineItems) {
+	if (
+		!payload.conversation ||
+		payload.clock === undefined ||
+		!payload.timelineItems
+	) {
 		throw new Error("Conversation response was empty.");
 	}
 	return payload as ConversationPayload;

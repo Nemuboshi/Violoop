@@ -262,7 +262,7 @@ describe("web business workflows", () => {
 			clock,
 			timelineItems: [assistantMessage],
 		};
-		mockFetch(
+		const fetchMock = mockFetch(
 			jsonResponse(created),
 			jsonResponse({ error: "Create failed" }, { status: 500 }),
 		);
@@ -299,6 +299,10 @@ describe("web business workflows", () => {
 				assistantName: " Ava ",
 				userRole: " ",
 				assistantRole: "Guide",
+				tactics: false,
+				dayProgression: false,
+				sessionState: false,
+				sceneEvents: false,
 			});
 		});
 		await act(async () => {
@@ -308,6 +312,18 @@ describe("web business workflows", () => {
 		expect(onRefreshConversations).toHaveBeenCalled();
 		expect(onRefreshTactics).toHaveBeenCalledWith("c1");
 		expect(result.current.open).toBe(false);
+		expect(
+			JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)),
+		).toMatchObject({
+			capabilities: {
+				tactics: false,
+				dayProgression: false,
+				sessionState: false,
+				sceneEvents: false,
+			},
+			allowedTacticIds: [],
+			enabledStateIds: [],
+		});
 
 		await act(async () => {
 			await result.current.startNewConversation();
@@ -395,9 +411,13 @@ describe("web business workflows", () => {
 		expect(result.current.saving).toBe(false);
 	});
 
-	it("blocks new chats when selected tactics depend on unselected session states", async () => {
-		const fetchMock = vi.fn();
-		vi.stubGlobal("fetch", fetchMock);
+	it("auto-enables session state when selected tactics depend on states", async () => {
+		const created = {
+			conversation,
+			clock: null,
+			timelineItems: [],
+		};
+		const fetchMock = mockFetch(jsonResponse(created));
 		const onConversationCreated = vi.fn();
 		const { result } = renderHook(() =>
 			useNewChatWorkflow({
@@ -418,8 +438,22 @@ describe("web business workflows", () => {
 			await result.current.openNewChatModal();
 		});
 		act(() => {
+			result.current.setTacticAllowed("calm", false);
+		});
+		act(() => {
 			result.current.setStateEnabled("urgency", false);
 		});
+		expect(result.current.selectedStateIds).toEqual([]);
+		act(() => {
+			result.current.setTacticAllowed("calm", true);
+		});
+		expect(result.current.selectedStateIds).toEqual(["urgency"]);
+		expect(result.current.draft.sessionState).toBe(true);
+		act(() => {
+			result.current.setStateEnabled("urgency", false);
+		});
+		expect(result.current.selectedStateIds).toEqual(["urgency"]);
+		expect(result.current.draft.sessionState).toBe(true);
 		act(() => {
 			result.current.setStateEnabled("urgency", true);
 			result.current.setStateEnabled("urgency", false);
@@ -428,11 +462,43 @@ describe("web business workflows", () => {
 			await result.current.startNewConversation();
 		});
 
-		expect(result.current.error).toBe(
-			"Selected tactics require missing session states: urgency.",
+		expect(result.current.error).toBe("");
+		expect(onConversationCreated).toHaveBeenCalledWith(created);
+		expect(
+			JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)),
+		).toMatchObject({
+			capabilities: { sessionState: true },
+			enabledStateIds: ["urgency"],
+		});
+	});
+
+	it("allows ordinary state toggles when no selected tactic requires them", async () => {
+		const { result } = renderHook(() =>
+			useNewChatWorkflow({
+				refreshTacticLibraryStatus: vi.fn(async () => ({
+					tactics: [{ ...tactic, requiredStateIds: [] }],
+					stateDefinitions: [stateDefinition],
+					userState: [],
+					clock: null,
+					recentRuns: [],
+				})),
+				onConversationCreated: vi.fn(),
+				onRefreshConversations: vi.fn(async () => {}),
+				onRefreshTactics: vi.fn(async () => {}),
+			}),
 		);
-		expect(onConversationCreated).not.toHaveBeenCalled();
-		expect(fetchMock).not.toHaveBeenCalled();
+
+		await act(async () => {
+			await result.current.openNewChatModal();
+		});
+		act(() => {
+			result.current.setTacticAllowed("calm", false);
+			result.current.setTacticAllowed("calm", true);
+			result.current.setStateEnabled("urgency", false);
+		});
+
+		expect(result.current.selectedTacticIds).toEqual(["calm"]);
+		expect(result.current.selectedStateIds).toEqual([]);
 	});
 
 	it("opens a new chat with empty choices when tactic library status is unavailable", async () => {
@@ -452,6 +518,49 @@ describe("web business workflows", () => {
 		expect(result.current.open).toBe(true);
 		expect(result.current.selectedTacticIds).toEqual([]);
 		expect(result.current.selectedStateIds).toEqual([]);
+	});
+
+	it("starts a state-enabled chat with selected session states", async () => {
+		const created = {
+			conversation,
+			clock: null,
+			timelineItems: [],
+		};
+		const fetchMock = mockFetch(jsonResponse(created));
+		const { result } = renderHook(() =>
+			useNewChatWorkflow({
+				refreshTacticLibraryStatus: vi.fn(async () => ({
+					tactics: [],
+					stateDefinitions: [stateDefinition],
+					userState: [],
+					clock: null,
+					recentRuns: [],
+				})),
+				onConversationCreated: vi.fn(),
+				onRefreshConversations: vi.fn(async () => {}),
+				onRefreshTactics: vi.fn(async () => {}),
+			}),
+		);
+
+		await act(async () => {
+			await result.current.openNewChatModal();
+		});
+		act(() => {
+			result.current.setDraft({
+				...result.current.draft,
+				sessionState: true,
+			});
+		});
+		await act(async () => {
+			await result.current.startNewConversation();
+		});
+
+		expect(
+			JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)),
+		).toMatchObject({
+			capabilities: { sessionState: true },
+			enabledStateIds: ["urgency"],
+		});
 	});
 
 	it("refreshes tactic library and session status from global and session scopes", async () => {

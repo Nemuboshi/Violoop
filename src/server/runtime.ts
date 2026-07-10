@@ -3,6 +3,7 @@ import type {
 	ActiveProvider,
 	ChatProviderAdapter,
 	ConversationSummary,
+	SessionCapabilities,
 	SessionClock,
 	TimelineItem,
 	VioloopConfig,
@@ -61,35 +62,67 @@ export async function createOpeningTimeline(input: {
 	adapter: ChatProviderAdapter;
 }) {
 	const conversation = input.conversation;
-	await ensureSessionClock(conversation.id);
+	const items = [];
 
-	const dayItem = await appendTimelineItem({
-		conversationId: conversation.id,
-		kind: "day_transition",
-		role: "system",
-		speakerName: "System",
-		content: "Day 1",
-		promptVisibility: "context",
-		metadata: { day: 1 },
-	});
-
-	const sceneTexts = await generateOpeningScenes(input);
-	const sceneItems = [];
-	for (const scene of sceneTexts) {
-		sceneItems.push(
+	if (conversation.capabilities.dayProgression) {
+		await ensureSessionClock(conversation.id);
+		items.push(
 			await appendTimelineItem({
 				conversationId: conversation.id,
-				kind: "scene",
+				kind: "day_transition",
 				role: "system",
-				speakerName: "Scene",
-				content: scene,
+				speakerName: "System",
+				content: "Day 1",
 				promptVisibility: "context",
 				metadata: { day: 1 },
 			}),
 		);
 	}
 
-	return [dayItem, ...sceneItems];
+	if (conversation.capabilities.sceneEvents) {
+		const sceneTexts = await generateOpeningScenes(input);
+		for (const scene of sceneTexts) {
+			items.push(
+				await appendSceneEvent({
+					conversationId: conversation.id,
+					content: scene,
+					day: conversation.capabilities.dayProgression ? 1 : undefined,
+				}),
+			);
+		}
+	}
+
+	return items;
+}
+
+export async function appendSceneEvent(input: {
+	conversationId: string;
+	content: string;
+	day?: number;
+}) {
+	return appendTimelineItem({
+		conversationId: input.conversationId,
+		kind: "scene",
+		role: "system",
+		speakerName: "Scene",
+		content: input.content,
+		promptVisibility: "context",
+		metadata: input.day ? { day: input.day } : undefined,
+	});
+}
+
+export function runtimeToolsForCapabilities(capabilities: SessionCapabilities) {
+	const tools = [];
+	if (capabilities.dayProgression) {
+		tools.push("advance_day");
+	}
+	if (capabilities.sceneEvents) {
+		tools.push("emit_scene");
+	}
+	if (capabilities.sessionState) {
+		tools.push("update_session_state");
+	}
+	return tools;
 }
 
 async function generateOpeningScenes(input: {
@@ -190,16 +223,35 @@ export async function runDailyStateUpdate(input: DailyStateUpdateInput) {
 		timeline,
 	});
 
+	await applySessionStatePatches({
+		conversationId: input.conversationId,
+		day: clock.day,
+		states,
+		patches: result.patches,
+		stateNote:
+			result.stateNote?.trim() ||
+			`Day ${clock.day} state updated after day transition.`,
+	});
+	await markStateUpdated(input.conversationId, clock.day);
+}
+
+export async function applySessionStatePatches(input: {
+	conversationId: string;
+	day?: number;
+	states: Awaited<ReturnType<typeof listUserState>>;
+	patches: RuntimeModelResult["patches"];
+	stateNote?: string;
+}) {
 	const patches = sanitizePatches(
-		result.patches ?? [],
-		states.map((state) => state.key),
+		input.patches ?? [],
+		input.states.map((state) => state.key),
 	);
 	const applied = [];
 	const now = new Date().toISOString();
-	const stateByKey = new Map(states.map((state) => [state.key, state]));
+	const stateByKey = new Map(input.states.map((state) => [state.key, state]));
 
 	for (const patch of patches) {
-		const current = stateByKey.get(patch.key) as (typeof states)[number];
+		const current = stateByKey.get(patch.key) as (typeof input.states)[number];
 
 		const previousValue = current.value;
 		const nextValue = clamp(previousValue + patch.delta, 0, 100);
@@ -223,14 +275,16 @@ export async function runDailyStateUpdate(input: DailyStateUpdateInput) {
 		role: "system",
 		speakerName: "System",
 		content:
-			result.stateNote?.trim() ||
-			`Day ${clock.day} state updated after day transition.`,
+			input.stateNote?.trim() ||
+			(input.day
+				? `Day ${input.day} state updated.`
+				: "Session state updated."),
 		promptVisibility: "hidden",
-		metadata: { day: clock.day, patches: applied },
+		metadata: { day: input.day, patches: applied },
 	});
 
-	await setUserState(input.conversationId, states);
-	await markStateUpdated(input.conversationId, clock.day);
+	await setUserState(input.conversationId, input.states);
+	return applied;
 }
 
 async function askRuntimeModel(input: {

@@ -13,6 +13,13 @@ const profile = {
 	assistantRole: "A calm guide.",
 };
 
+const allCapabilities = {
+	tactics: true,
+	dayProgression: true,
+	sessionState: true,
+	sceneEvents: true,
+};
+
 describe("chat prompt assembly", () => {
 	it("separates global policy, session profile, runtime context, tactics, and transcript roles", async () => {
 		const { assembleChatPrompt } = await import(
@@ -30,6 +37,7 @@ describe("chat prompt assembly", () => {
 		const prompt = assembleChatPrompt({
 			globalSystemPrompt: "  Stay direct.  ",
 			profile,
+			capabilities: allCapabilities,
 			clock,
 			summary: {
 				id: "summary",
@@ -66,6 +74,7 @@ describe("chat prompt assembly", () => {
 		expect(stable.content).toContain("Global behavior policy:\nStay direct.");
 		expect(stable.content).toContain("Instruction priority:");
 		expect(stable.content).toContain("Structured output contract:");
+		expect(stable.content).toContain("runtimeActions");
 		expect(stable.content).toContain(
 			"messages must contain normal assistant speech only.",
 		);
@@ -75,6 +84,9 @@ describe("chat prompt assembly", () => {
 		expect(session).toMatchObject({ cacheScope: "session" });
 		expect(session.content).toContain("Assistant display name: Ava");
 		expect(session.content).toContain("User role in this session:");
+		expect(session.content).toContain("- advance_day");
+		expect(session.content).toContain("- emit_scene");
+		expect(session.content).toContain("- update_session_state");
 		expect(session.content).not.toContain("Runtime context:");
 
 		expect(dynamic.cacheScope).toBeUndefined();
@@ -98,6 +110,7 @@ describe("chat prompt assembly", () => {
 		const prompt = assembleChatPrompt({
 			globalSystemPrompt: "Be useful.",
 			profile,
+			capabilities: allCapabilities,
 			clock,
 			timeline: [],
 			tactics: [],

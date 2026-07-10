@@ -6,6 +6,7 @@ import type {
 	ChatUsage,
 	ConversationSummary,
 	PromptVisibility,
+	SessionCapabilities,
 	SessionClock,
 	SessionProfile,
 	TacticRunLogEntry,
@@ -33,6 +34,7 @@ type ConversationCreatedEvent = {
 	conversationId: string;
 	title: string;
 	profile: SessionProfile;
+	capabilities: SessionCapabilities;
 	createdAt: string;
 };
 
@@ -153,6 +155,13 @@ const sessionProfileSchema = z.strictObject({
 	assistantRole: z.string(),
 });
 
+const sessionCapabilitiesSchema = z.strictObject({
+	tactics: z.boolean(),
+	dayProgression: z.boolean(),
+	sessionState: z.boolean(),
+	sceneEvents: z.boolean(),
+});
+
 const chatUsageSchema = z
 	.strictObject({
 		promptTokens: z.number().optional(),
@@ -184,6 +193,7 @@ const eventSchema = z.discriminatedUnion("type", [
 		conversationId: z.string(),
 		title: z.string(),
 		profile: sessionProfileSchema,
+		capabilities: sessionCapabilitiesSchema.optional(),
 		createdAt: z.string(),
 	}),
 	z.strictObject({
@@ -289,13 +299,32 @@ export const defaultSessionProfile: SessionProfile = {
 	assistantRole: "A concise assistant that answers directly.",
 };
 
+export const defaultSessionCapabilities: SessionCapabilities = {
+	tactics: true,
+	dayProgression: false,
+	sessionState: false,
+	sceneEvents: false,
+};
+
+const legacySessionCapabilities: SessionCapabilities = {
+	tactics: true,
+	dayProgression: true,
+	sessionState: true,
+	sceneEvents: true,
+};
+
 export async function createConversation(
-	input: { title?: string; profile?: SessionProfile } = {},
+	input: {
+		title?: string;
+		profile?: SessionProfile;
+		capabilities?: SessionCapabilities;
+	} = {},
 ) {
 	const now = new Date().toISOString();
 	const conversationId = randomUUID();
 	const title = normalizeTitle(input.title);
 	const profile = normalizeSessionProfile(input.profile);
+	const capabilities = normalizeSessionCapabilities(input.capabilities);
 
 	await appendEvent({
 		type: "conversation.created",
@@ -303,6 +332,7 @@ export async function createConversation(
 		conversationId,
 		title,
 		profile,
+		capabilities,
 		createdAt: now,
 	});
 
@@ -310,6 +340,7 @@ export async function createConversation(
 		id: conversationId,
 		title,
 		profile,
+		capabilities,
 		createdAt: now,
 		updatedAt: now,
 		messageCount: 0,
@@ -640,6 +671,10 @@ async function replayConversations() {
 				id: event.conversationId,
 				title: event.title,
 				profile: event.profile,
+				capabilities: normalizeSessionCapabilities(
+					event.capabilities,
+					legacySessionCapabilities,
+				),
 				createdAt: event.createdAt,
 				updatedAt: event.createdAt,
 				messageCount: 0,
@@ -862,6 +897,18 @@ function normalizeSessionProfile(
 			1000,
 		),
 	};
+}
+
+function normalizeSessionCapabilities(
+	capabilities: SessionCapabilities | undefined,
+	fallback: SessionCapabilities = defaultSessionCapabilities,
+): SessionCapabilities {
+	return sessionCapabilitiesSchema.parse({
+		tactics: capabilities?.tactics ?? fallback.tactics,
+		dayProgression: capabilities?.dayProgression ?? fallback.dayProgression,
+		sessionState: capabilities?.sessionState ?? fallback.sessionState,
+		sceneEvents: capabilities?.sceneEvents ?? fallback.sceneEvents,
+	});
 }
 
 function normalizeProfileText(

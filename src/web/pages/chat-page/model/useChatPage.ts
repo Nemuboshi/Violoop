@@ -8,6 +8,7 @@ import {
 	timelineSpeaker,
 	timelineSpeakerClassName,
 } from "../../../entities/message";
+import { defaultSessionCapabilities } from "../../../entities/session";
 import { useChatSession } from "../../../features/chat-session";
 import {
 	isThinkingLevel,
@@ -197,6 +198,8 @@ export function useChatPage() {
 		]),
 	);
 	const hasActiveConversation = chatSession.activeConversationId !== null;
+	const activeCapabilities =
+		chatSession.activeCapabilities ?? defaultSessionCapabilities;
 	const sidebarView: SidebarView = {
 		conversations: conversations.conversations.map((conversation) => ({
 			id: conversation.id,
@@ -228,19 +231,26 @@ export function useChatPage() {
 			: null,
 		tactics: hasActiveConversation
 			? {
-					day: chatSession.activeClock?.day ?? null,
+					day: activeCapabilities.dayProgression
+						? (chatSession.activeClock?.day ?? null)
+						: null,
 					lastLoaded: chatSession.lastTacticIds.map((id) => ({
 						id,
 						name: tacticNameById.get(id) ?? id,
 					})),
-					allowed: (tactics.tacticsStatus?.tactics ?? [])
-						.filter((tactic) => tactics.selectedTacticIds.includes(tactic.id))
-						.map((tactic) => ({ id: tactic.id, name: tactic.name })),
-					userState:
-						tactics.tacticsStatus?.userState.map((state) => ({
-							key: state.key,
-							value: state.value,
-						})) ?? [],
+					allowed: activeCapabilities.tactics
+						? (tactics.tacticsStatus?.tactics ?? [])
+								.filter((tactic) =>
+									tactics.selectedTacticIds.includes(tactic.id),
+								)
+								.map((tactic) => ({ id: tactic.id, name: tactic.name }))
+						: [],
+					userState: activeCapabilities.sessionState
+						? (tactics.tacticsStatus?.userState.map((state) => ({
+								key: state.key,
+								value: state.value,
+							})) ?? [])
+						: [],
 				}
 			: null,
 	};
