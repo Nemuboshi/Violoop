@@ -351,6 +351,8 @@ describe("web components", () => {
 		expect(onDelete).toHaveBeenCalledWith("c1");
 		expect(screen.getByText("model-a")).toBeInTheDocument();
 		expect(screen.getByText("Day 2")).toBeInTheDocument();
+		expect(screen.getByText("Triggered last turn")).toBeInTheDocument();
+		expect(screen.getByText("Enabled for session")).toBeInTheDocument();
 		expect(screen.getByText("Calm")).toBeInTheDocument();
 		expect(screen.getByText("Brief")).toBeInTheDocument();
 
@@ -379,7 +381,12 @@ describe("web components", () => {
 			/>,
 		);
 		expect(screen.queryByText("Day 2")).not.toBeInTheDocument();
-		expect(screen.getByText("No tactic loaded last turn")).toBeInTheDocument();
+		expect(
+			screen.getByText("No tactic triggered in the last assistant turn"),
+		).toBeInTheDocument();
+		expect(
+			screen.getByText("No tactics enabled for this session"),
+		).toBeInTheDocument();
 	});
 
 	it("renders config modal tabs for settings, providers, and tactics", async () => {

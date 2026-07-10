@@ -1,0 +1,76 @@
+- main [ref=e3]:
+  - generic [ref=e4]:
+    - complementary [ref=e5]:
+      - generic [ref=e7]:
+        - generic [ref=e8]:
+          - button "New chat" [ref=e9]
+          - button "Configure" [ref=e10]
+        - generic [ref=e12]:
+          - generic [ref=e13]: Sessions
+          - generic [ref=e21]:
+            - button "New chat" [active] [ref=e22]
+            - button "Rename New chat" [ref=e24]: r
+            - button "Delete New chat" [ref=e25]: x
+          - generic [ref=e26]:
+            - button "New chat" [ref=e27]
+            - button "Rename New chat" [ref=e29]: r
+            - button "Delete New chat" [ref=e30]: x
+          - generic [ref=e31]:
+            - button "New chat" [ref=e32]
+            - button "Rename New chat" [ref=e34]: r
+            - button "Delete New chat" [ref=e35]: x
+        - generic [ref=e36]:
+          - generic [ref=e37]: Provider
+          - strong [ref=e38]: gpt-5.5
+          - generic [ref=e39]: http://127.0.0.1:15721/v1
+          - generic [ref=e40]: Usage tracking on / stable prompt
+        - generic [ref=e41]:
+          - generic [ref=e42]: Tactics
+          - generic [ref=e43]: Triggered tactics are loaded per turn. Enabled tactics are locked for this session.
+          - generic [ref=e44]:
+            - generic [ref=e45]: Runtime
+            - strong [ref=e46]: Day 1
+          - region "Triggered tactics from last turn" [ref=e47]:
+            - generic [ref=e48]:
+              - heading "Triggered last turn" [level=3] [ref=e49]
+              - generic [ref=e50]: 0 loaded
+            - generic [ref=e51]: No tactic triggered in the last assistant turn
+          - region "Session-enabled tactics" [ref=e52]:
+            - generic [ref=e53]:
+              - heading "Enabled for session" [level=3] [ref=e54]
+              - generic [ref=e55]: 3 enabled
+            - generic [ref=e56]:
+              - generic [ref=e57]:
+                - generic [ref=e59]: Answer directly under pressure
+                - generic [ref=e60]: enabled
+              - generic [ref=e61]:
+                - generic [ref=e63]: Explain tradeoffs when uncertain
+                - generic [ref=e64]: enabled
+              - generic [ref=e65]:
+                - generic [ref=e67]: Recover after correction
+                - generic [ref=e68]: enabled
+          - generic [ref=e69]:
+            - generic [ref=e70]: Session state
+            - meter "confidence-needed" [ref=e71]:
+              - text: confidence-needed
+              - generic [ref=e72]: 50%
+              - text: x
+            - meter "detail-tolerance" [ref=e75]:
+              - text: detail-tolerance
+              - generic [ref=e76]: 50%
+              - text: x
+            - meter "frustration" [ref=e79]:
+              - text: frustration
+              - generic [ref=e80]: 20%
+              - text: x
+            - meter "urgency" [ref=e83]:
+              - text: urgency
+              - generic [ref=e84]: 40%
+              - text: x
+    - region "Chat messages" [ref=e15]:
+      - article [ref=e89]:
+        - generic [ref=e90]: Day
+        - paragraph [ref=e91]: Day 1
+      - generic [ref=e17]:
+        - textbox "Ask Violoop anything..." [ref=e92]
+        - button "Send" [disabled] [ref=e20]

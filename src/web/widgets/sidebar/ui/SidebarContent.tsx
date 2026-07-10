@@ -11,6 +11,36 @@ type SidebarContentProps = {
 	onRestoreConversation(conversationId: string): void;
 };
 
+type TacticChipProps = {
+	name: string;
+	variant: "enabled" | "triggered";
+};
+
+function TacticChip(props: TacticChipProps) {
+	const triggered = props.variant === "triggered";
+	return (
+		<span
+			className={`flex min-w-0 items-center gap-2 border border-neutral-950 px-2 py-1.5 text-sm ${
+				triggered ? "bg-neutral-950 text-white" : "bg-white text-neutral-950"
+			}`}
+		>
+			<span
+				className={`h-1.5 w-1.5 shrink-0 ${
+					triggered ? "bg-white" : "border border-neutral-950"
+				}`}
+			/>
+			<span className="min-w-0 flex-1 truncate">{props.name}</span>
+			<small
+				className={`shrink-0 text-[0.65rem] uppercase tracking-wide ${
+					triggered ? "text-neutral-200" : "text-neutral-500"
+				}`}
+			>
+				{triggered ? "triggered" : "enabled"}
+			</small>
+		</span>
+	);
+}
+
 export function SidebarContent(props: SidebarContentProps) {
 	return (
 		<div className={`flex min-h-full flex-col gap-5 ${props.className ?? ""}`}>
@@ -115,38 +145,72 @@ export function SidebarContent(props: SidebarContentProps) {
 			{props.view.tactics ? (
 				<div className="grid min-w-0 gap-3 border-t border-line-soft pt-5 text-sm">
 					<span className="text-muted">Tactics</span>
-					<small className="text-muted">Locked for this session</small>
+					<small className="text-muted">
+						Triggered tactics are loaded per turn. Enabled tactics are locked
+						for this session.
+					</small>
 					{props.view.tactics.day !== null ? (
 						<div className="grid gap-1 border border-neutral-950 bg-white px-3 py-2">
 							<small className="text-muted">Runtime</small>
 							<strong className="text-ink">Day {props.view.tactics.day}</strong>
 						</div>
 					) : null}
-					{props.view.tactics.lastLoaded.length > 0 ? (
-						<div className="grid gap-1">
-							<small className="text-muted">Last loaded</small>
-							{props.view.tactics.lastLoaded.map((tactic) => (
-								<span
-									className="truncate border border-neutral-950 bg-white px-2 py-1 text-neutral-950"
-									key={tactic.id}
-								>
-									{tactic.name}
-								</span>
-							))}
+					<section
+						aria-label="Triggered tactics from last turn"
+						className="grid min-w-0 gap-2 border border-neutral-950 bg-white p-3"
+					>
+						<div className="flex min-w-0 items-baseline justify-between gap-2">
+							<h3 className="text-sm font-bold text-neutral-950">
+								Triggered last turn
+							</h3>
+							<small className="shrink-0 text-muted">
+								{props.view.tactics.lastLoaded.length} loaded
+							</small>
 						</div>
-					) : (
-						<small className="text-muted">No tactic loaded last turn</small>
-					)}
-					<div className="grid gap-2">
-						{props.view.tactics.allowed.map((tactic) => (
-							<span
-								className="border border-neutral-950 bg-white px-3 py-2 text-neutral-950"
-								key={tactic.id}
-							>
-								{tactic.name}
-							</span>
-						))}
-					</div>
+						{props.view.tactics.lastLoaded.length > 0 ? (
+							<div className="grid gap-2">
+								{props.view.tactics.lastLoaded.map((tactic) => (
+									<TacticChip
+										key={tactic.id}
+										name={tactic.name}
+										variant="triggered"
+									/>
+								))}
+							</div>
+						) : (
+							<small className="text-muted">
+								No tactic triggered in the last assistant turn
+							</small>
+						)}
+					</section>
+					<section
+						aria-label="Session-enabled tactics"
+						className="grid min-w-0 gap-2 border border-line-soft bg-neutral-50 p-3"
+					>
+						<div className="flex min-w-0 items-baseline justify-between gap-2">
+							<h3 className="text-sm font-bold text-neutral-950">
+								Enabled for session
+							</h3>
+							<small className="shrink-0 text-muted">
+								{props.view.tactics.allowed.length} enabled
+							</small>
+						</div>
+						{props.view.tactics.allowed.length > 0 ? (
+							<div className="grid gap-2">
+								{props.view.tactics.allowed.map((tactic) => (
+									<TacticChip
+										key={tactic.id}
+										name={tactic.name}
+										variant="enabled"
+									/>
+								))}
+							</div>
+						) : (
+							<small className="text-muted">
+								No tactics enabled for this session
+							</small>
+						)}
+					</section>
 					<div className="grid gap-2 border-t border-line-soft pt-3">
 						<small className="text-muted">Session state</small>
 						{props.view.tactics.userState.map((state) => (

@@ -210,7 +210,15 @@ vi.mock("../../src/web/pages/chat-page/model/useChatPage", () => ({
 		sidebarView: {
 			conversations: [{ id: "c1", title: "Morning", active: true }],
 			provider: null,
-			tactics: null,
+			tactics: {
+				day: 1,
+				lastLoaded: [{ id: "calm", name: "Calm" }],
+				allowed: [
+					{ id: "calm", name: "Calm" },
+					{ id: "focus", name: "Focus" },
+				],
+				userState: [{ key: "urgency", value: 40 }],
+			},
 		},
 		sendMessage,
 		confirmLastUserMessageEdit,
@@ -232,6 +240,31 @@ describe("chat page UI wiring", () => {
 	it("connects sidebar, composer, config, provider, tactic, new chat, and delete actions", async () => {
 		const user = userEvent.setup();
 		render(<ChatPage />);
+
+		const triggeredTactics = screen.getByRole("region", {
+			name: "Triggered tactics from last turn",
+			hidden: true,
+		});
+		expect(
+			within(triggeredTactics).getByRole("heading", {
+				name: "Triggered last turn",
+				hidden: true,
+			}),
+		).toBeInTheDocument();
+		expect(within(triggeredTactics).getByText("1 loaded")).toBeInTheDocument();
+		expect(within(triggeredTactics).getByText("triggered")).toBeInTheDocument();
+		const enabledTactics = screen.getByRole("region", {
+			name: "Session-enabled tactics",
+			hidden: true,
+		});
+		expect(
+			within(enabledTactics).getByRole("heading", {
+				name: "Enabled for session",
+				hidden: true,
+			}),
+		).toBeInTheDocument();
+		expect(within(enabledTactics).getByText("2 enabled")).toBeInTheDocument();
+		expect(within(enabledTactics).getAllByText("enabled")).toHaveLength(2);
 
 		fireEvent.click(
 			screen.getByRole("button", { name: "Open menu", hidden: true }),
