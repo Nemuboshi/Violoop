@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { StateDefinition } from "../../../entities/tactic";
+import { createClientId } from "../../../shared/lib";
 import {
 	Button,
 	ScrollArea,
@@ -39,7 +40,7 @@ export function ConfigStatesTab(props: {
 					variant="primary"
 					onClick={() =>
 						setDraft({
-							id: crypto.randomUUID(),
+							id: createClientId("state"),
 							originalId: null,
 							name: "New state",
 							description: "",

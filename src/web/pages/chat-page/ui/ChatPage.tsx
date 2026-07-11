@@ -63,8 +63,8 @@ export default function ChatPage() {
 	}
 
 	return (
-		<main className="h-screen overflow-hidden bg-canvas text-ink">
-			<div className="mx-auto grid h-screen w-full max-w-[1180px] grid-cols-[280px_minmax(0,1fr)] border-x border-line-soft bg-surface max-md:grid-cols-1 max-md:border-x-0">
+		<main className="h-dvh overflow-hidden bg-canvas text-ink">
+			<div className="mx-auto grid h-dvh w-full max-w-[1180px] grid-cols-[280px_minmax(0,1fr)] border-x border-line-soft bg-surface max-md:grid-cols-1 max-md:border-x-0">
 				<aside className="min-h-0 border-r border-line-soft bg-panel max-md:hidden">
 					<ScrollArea className="h-full" contentClassName="min-h-full">
 						{renderSidebarContent("p-6")}
@@ -72,7 +72,7 @@ export default function ChatPage() {
 				</aside>
 
 				<section
-					className="relative grid min-h-0 grid-rows-[1fr_auto_auto] p-5 max-md:h-screen max-md:p-3 max-md:pt-14"
+					className="relative grid min-h-0 grid-rows-[1fr_auto_auto] p-5 max-md:h-dvh max-md:p-3 max-md:pt-14"
 					aria-label="Chat messages"
 				>
 					<Popover.Root open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>

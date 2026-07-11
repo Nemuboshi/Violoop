@@ -4,7 +4,6 @@ import { defineConfig, loadEnv } from "vite";
 
 export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), "");
-	const apiHost = env.VIOLOOP_HOST || "127.0.0.1";
 	const apiPort = Number(env.VIOLOOP_PORT || 3000);
 
 	if (!Number.isInteger(apiPort) || apiPort < 1 || apiPort > 65535) {
@@ -16,7 +15,7 @@ export default defineConfig(({ mode }) => {
 		server: {
 			port: 5173,
 			proxy: {
-				"/api": `http://${apiHost}:${apiPort}`,
+				"/api": `http://127.0.0.1:${apiPort}`,
 			},
 		},
 	};

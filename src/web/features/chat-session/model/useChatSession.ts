@@ -11,6 +11,7 @@ import {
 	type SessionClock,
 	type SessionProfile,
 } from "../../../entities/session";
+import { createClientId } from "../../../shared/lib";
 import { editLastUserMessage, sendChatMessage } from "../api/chatApi";
 
 type ChatSessionStatus = "idle" | "thinking" | "error";
@@ -161,7 +162,7 @@ export function useChatSession() {
 		}
 
 		const userMessage: TimelineItem = {
-			id: crypto.randomUUID(),
+			id: createClientId("message"),
 			conversationId: activeConversationId,
 			kind: "chat",
 			role: "user",
