@@ -1,0 +1,26 @@
+[
+	{
+		"id": "trust",
+		"name": "Trust",
+		"description": "How much the user currently trusts Violoop's judgment.",
+		"defaultValue": 45
+	},
+	{
+		"id": "stress",
+		"name": "Stress",
+		"description": "How much pressure or irritation the user appears to feel.",
+		"defaultValue": 20
+	},
+	{
+		"id": "openness",
+		"name": "Openness",
+		"description": "How willing the user is to discuss alternatives or nuance.",
+		"defaultValue": 55
+	},
+	{
+		"id": "energy",
+		"name": "Energy",
+		"description": "How much bandwidth the user seems to have for detail.",
+		"defaultValue": 50
+	}
+]

@@ -1,69 +1,100 @@
 # Violoop
 
-Violoop is a small web chatbot that talks to a configured model provider. The web app lives under `src/web`, the Fastify API lives under `src/server`, and shared TypeScript types live under `src/shared`.
+Violoop is a local-first web chatbot. The React app is served as static assets, the Hono Worker provides a same-origin model proxy, and chat/configuration data is stored in the browser's IndexedDB.
 
-The provider config follows Pi Agent's provider shape: providers declare `baseUrl`, `api`, `authHeader`, `models`, and optional `compat` flags. User-editable chat and provider configuration is stored as JSON at `data/settings.json` and can be edited from the in-app Configure modal. Deployment-level runtime settings live in `.env`.
+> **Important:** IndexedDB is scoped to the current browser profile. Clearing site data loses local data. Use the Configuration modal's **Export local data** action for backups. Exported JSON intentionally omits Provider API keys; keys must be entered again after import.
 
-The development baseline follows the local Pi Agent setup on this machine:
-
-- `baseUrl=http://127.0.0.1:15721/v1`
-- `model=gpt-5.5`
-
-## Run
+## Run locally
 
 ```bash
 pnpm install
-copy .env.example .env
-pnpm seed
 pnpm dev
 ```
 
 Open `http://127.0.0.1:5173`.
 
-## Configure
+The existing Node/Fastify server remains available for the current server test suite and migration work:
 
-Open the app and choose Configure. Settings are saved through `/api/config` into `data/settings.json` and take effect on the next chat request. The server validates settings with Zod before saving.
+```bash
+pnpm seed
+pnpm dev:api
+```
 
-For a fresh checkout, run `pnpm seed` once to create `data/settings.json` and `data/tactics.json`. Use `pnpm seed:force` only when you intentionally want to overwrite local seed files.
+For the Cloudflare-compatible proxy locally, use Wrangler:
 
-Deployment settings are read from `.env` at API startup:
+```bash
+pnpm dev:worker
+```
 
-- `VIOLOOP_HOST`
-- `VIOLOOP_PORT`
-- `VIOLOOP_CORS_ORIGINS`
-- `VIOLOOP_DATA_DIR`
+Vite proxies `/api` to the configured local API target during development. `VIOLOOP_HOST` and `VIOLOOP_PORT` can be used for the legacy Node API; production uses the Worker and does not use `VIOLOOP_DATA_DIR`.
 
-`pnpm seed` also reads `.env`, so a custom `VIOLOOP_DATA_DIR` is seeded in the same location the server will use.
+## Architecture
 
-The first adapter is `openai-completions`, matching OpenAI-compatible `/chat/completions` providers. Add new provider APIs under `src/server/providers/` and register them in `src/server/providers/index.ts`.
+```text
+Browser React
+  ├─ IndexedDB: conversations, messages, config, providers, tactics, states
+  ├─ JSON export/import (API keys redacted by default)
+  └─ same-origin /api requests
+       │
+       ▼
+Cloudflare Worker / Hono
+  ├─ /api/health
+  ├─ /api/chat
+  └─ /api/providers/test
+       │
+       ▼
+OpenAI-compatible provider
+```
 
-## Prompt Cache
+The Worker is stateless. It receives the prompt context required for one request, calls the configured Provider, and returns the collected text and usage. It does not access IndexedDB and does not persist conversations.
 
-`chat.systemPrompt` is always sent as the first provider message. If `compat.supportsDeveloperRole` is true, Violoop sends it as a `developer` message; otherwise it sends `system`.
+## Cloudflare deployment
 
-For cache reporting, `openai-completions` sends `stream_options.include_usage` unless `compat.supportsUsageInStreaming` is false. The server stores the final usage chunk by request id and exposes it through `/api/usage/{requestId}`. The UI shows cached prompt tokens when the provider reports them.
+Install Wrangler through pnpm and authenticate once:
 
-For explicit cache markers, set `compat.cacheControlFormat` to `anthropic`. Then `chat.cache.systemPrompt: true` wraps the system prompt with an Anthropic-style `cache_control` marker. Leave this unset for strict OpenAI-compatible providers that reject non-standard content fields.
+```bash
+pnpm install
+pnpm exec wrangler login
+pnpm deploy
+```
 
-## Chat Storage
+`wrangler.toml` uses `dist` as the static asset directory and enables SPA fallback. Optional `VIOLOOP_ALLOWED_ORIGINS` can contain a comma-separated list of allowed origins. Same-origin deployment is recommended.
 
-Global settings stay in `data/settings.json`. Chat and session events are stored as append-only JSONL at `data/conversations.jsonl`.
+The Worker validates Provider URLs. HTTPS is required in production; localhost HTTP is allowed for local development. Private IPs, credentials embedded in URLs, and unsupported Provider APIs are rejected to reduce SSRF risk.
 
-The chat log is the source of truth for conversations. The server replays it in memory to provide:
+## Provider and prompt behavior
 
-- `GET /api/conversations`
-- `GET /api/conversations/{conversationId}/messages`
+Providers use the OpenAI-compatible `/chat/completions` shape. The adapter supports the existing thinking formats, developer/system role selection, usage streaming, prompt cache options, Anthropic cache markers, and SSE response parsing.
 
-`POST /api/chat` requires a `conversationId`. New sessions are created through `POST /api/conversations`, which also initializes the session clock, allowed tactics, and opening timeline.
+Provider API keys are stored in the current browser's IndexedDB. The Worker proxy prevents Provider CORS problems and hides the Provider URL from frontend request code, but it is not a server-side secret vault: the browser owner and a successful XSS can access local keys.
 
-## Tactics
+## Local data and export
 
-Tactics are a global strategy library stored in `data/tactics.json`. Each tactic has a lightweight trigger index and a structured body; the body is loaded only when the tactic is selected for a chat turn.
+IndexedDB stores:
 
-Per-session data is separate:
+- global chat configuration and providers;
+- conversations and timeline items;
+- compaction summaries;
+- session clocks, tactics, and user states;
+- tactic/state libraries and usage records.
 
-- `session.tactics_set` events control which global tactics are allowed in a conversation.
-- `session.user_state_set` events store that conversation's user state bars.
-- `tactic.run_logged` events record why each tactic was loaded or skipped.
+Export/import is available from **Configure → Settings**. Export format is versioned as `violoop-export` with schema version `1`. Import validates the complete envelope before writing. Existing API keys are retained when an imported Provider has the same id; exported files never include keys.
 
-The UI lets each session choose its allowed tactics when the session is created.
+There is no cross-device sync, account system, or cloud conversation backup in this version. D1/R2 can be introduced later if cloud synchronization becomes a requirement.
+
+## Tactics and session behavior
+
+Tactics remain a global library with per-session allowed choices. At most five matching tactics are loaded for a turn. Session state, day progression, opening scenes, runtime actions, compaction, prompt visibility, and edit-last behavior retain the business rules covered by the Vitest suite.
+
+## Quality commands
+
+Use pnpm for every command:
+
+```bash
+pnpm test
+pnpm test:coverage
+pnpm build
+pnpm biome check .
+```
+
+Coverage is required to remain at 100% for the existing business modules. New Worker/storage modules are tested with Vitest and fake IndexedDB; complete migration will raise their coverage to the same 100% threshold before the legacy Node server is removed.

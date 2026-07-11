@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
+import { scoreTactic as scoreSharedTactic } from "../shared/domain/tactics";
 import type {
 	LoadedTactic,
 	StateDefinition,
@@ -86,7 +87,7 @@ export async function selectTactics(input: SelectTacticsInput) {
 	const loaded: LoadedTactic[] = [];
 
 	for (const candidate of candidates) {
-		decisions.push(scoreCandidate(candidate, input.message, states));
+		decisions.push(scoreSharedTactic(candidate, input.message, states));
 	}
 
 	const winnerIds = new Set(
@@ -377,57 +378,6 @@ async function listEnabledTacticCandidates(
 		.sort((left, right) => left.name.localeCompare(right.name));
 }
 
-function scoreCandidate(
-	candidate: TacticCandidate,
-	message: string,
-	states: UserState[],
-): TacticDecision {
-	const normalizedMessage = message.toLowerCase();
-	const matchedKeywords = candidate.keywords.filter((keyword) =>
-		normalizedMessage.includes(keyword.toLowerCase()),
-	);
-	const blockedBy = candidate.blockedKeywords.filter((keyword) =>
-		normalizedMessage.includes(keyword.toLowerCase()),
-	);
-	const emotionMatches = candidate.emotionRules.filter((rule) =>
-		matchesEmotionRule(rule, states),
-	);
-	const reasons: string[] = [];
-
-	let score = 0;
-	score += Math.min(matchedKeywords.length * 0.5, 1);
-	score += Math.min(emotionMatches.length * 0.35, 0.7);
-
-	if (matchedKeywords.length > 0) {
-		reasons.push(`matched keywords: ${matchedKeywords.join(", ")}`);
-	}
-
-	if (emotionMatches.length > 0) {
-		reasons.push(
-			`matched emotion rules: ${emotionMatches.map((rule) => `${rule.key}${rule.operator}${rule.value}`).join(", ")}`,
-		);
-	}
-
-	if (blockedBy.length > 0) {
-		reasons.push(`blocked by keywords: ${blockedBy.join(", ")}`);
-	}
-
-	const loaded =
-		blockedBy.length === 0 &&
-		(matchedKeywords.length > 0 || emotionMatches.length > 0);
-
-	return {
-		tacticId: candidate.id,
-		name: candidate.name,
-		score: Number(score.toFixed(3)),
-		loaded,
-		decision: loaded ? "loaded" : "skipped",
-		reasons: reasons.length > 0 ? reasons : ["no trigger matched"],
-		matchedKeywords,
-		contraindications: blockedBy,
-	};
-}
-
 function limitLoadedTactics(decisions: TacticDecision[]) {
 	const loaded = decisions.filter((decision) => decision.loaded);
 	if (loaded.length <= maxLoadedTactics) {
@@ -441,17 +391,6 @@ function limitLoadedTactics(decisions: TacticDecision[]) {
 	}
 
 	return shuffled.slice(0, maxLoadedTactics);
-}
-
-function matchesEmotionRule(rule: TacticEmotionRule, states: UserState[]) {
-	const state = states.find((item) => item.key === rule.key);
-	if (!state) {
-		return false;
-	}
-
-	return rule.operator === ">="
-		? state.value >= rule.value
-		: state.value <= rule.value;
 }
 
 async function normalizeTacticDraft(input: Tactic): Promise<Tactic> {

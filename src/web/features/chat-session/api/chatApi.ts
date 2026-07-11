@@ -1,10 +1,13 @@
 import type { ChatResponse } from "../../../../shared/types";
 import { fetchJson } from "../../../shared/api";
+import { hasIndexedDb } from "../../../shared/storage/localData";
+import { editLocalLastUserMessage, sendLocalChatMessage } from "./localChat";
 
 export async function sendChatMessage(input: {
 	conversationId: string;
 	message: string;
 }) {
+	if (hasIndexedDb()) return sendLocalChatMessage(input);
 	return fetchJson<Partial<ChatResponse>>("/api/chat", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
@@ -16,6 +19,7 @@ export async function editLastUserMessage(input: {
 	conversationId: string;
 	message: string;
 }) {
+	if (hasIndexedDb()) return editLocalLastUserMessage(input);
 	return fetchJson<Partial<ChatResponse>>("/api/chat/edit-last", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },

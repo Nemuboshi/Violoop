@@ -1,0 +1,29 @@
+{
+	"chat": {
+		"defaultProvider": "codex",
+		"defaultModel": "gpt-5.5",
+		"systemPrompt": "You are Violoop, a concise assistant. Answer directly, ask focused follow-up questions only when required, and keep formatting easy to scan.",
+		"temperature": 0.7,
+		"thinkingLevel": "off",
+		"cache": { "systemPrompt": true },
+		"compaction": {
+			"enabled": true,
+			"triggerTokens": 60000,
+			"keepRecentTokens": 20000
+		}
+	},
+	"providers": {
+		"codex": {
+			"name": "Codex",
+			"baseUrl": "http://127.0.0.1:15721/v1",
+			"api": "openai-completions",
+			"authHeader": false,
+			"models": [{ "id": "gpt-5.5", "name": "gpt-5.5" }],
+			"compat": {
+				"supportsDeveloperRole": true,
+				"supportsUsageInStreaming": true,
+				"thinkingFormat": "openai"
+			}
+		}
+	}
+}

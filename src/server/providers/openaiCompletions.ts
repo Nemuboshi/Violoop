@@ -21,14 +21,30 @@ type OpenAiMessage = Omit<ChatMessage, "content"> & {
 
 export const openAiCompletionsAdapter: ChatProviderAdapter = {
 	async *streamChat(options: StreamChatOptions) {
-		const upstream = await fetch(
-			`${options.provider.baseUrl}/chat/completions`,
-			{
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), 120_000);
+		let upstream: Response;
+		try {
+			upstream = await fetch(`${options.provider.baseUrl}/chat/completions`, {
 				method: "POST",
 				headers: buildHeaders(options),
 				body: JSON.stringify(buildRequestBody(options)),
-			},
-		);
+				redirect: "error",
+				signal: controller.signal,
+			});
+		} catch (error) {
+			if (error instanceof ProviderRequestError) throw error;
+			if (error instanceof DOMException && error.name === "AbortError") {
+				throw new ProviderRequestError(
+					504,
+					"Provider request timed out.",
+					error.message,
+				);
+			}
+			throw error;
+		} finally {
+			clearTimeout(timeout);
+		}
 
 		if (!upstream.ok || !upstream.body) {
 			const detail = await upstream.text().catch(() => "");
@@ -42,11 +58,22 @@ export const openAiCompletionsAdapter: ChatProviderAdapter = {
 		const reader = upstream.body.getReader();
 		const decoder = new TextDecoder();
 		let buffer = "";
+		let responseBytes = 0;
+		const maxResponseBytes = 8 * 1024 * 1024;
 
 		while (true) {
 			const { value, done } = await reader.read();
 			if (done) {
 				break;
+			}
+			responseBytes += value?.byteLength ?? 0;
+			if (responseBytes > maxResponseBytes) {
+				await reader.cancel();
+				throw new ProviderRequestError(
+					502,
+					"Provider response is too large.",
+					"response limit exceeded",
+				);
 			}
 
 			buffer += decoder.decode(value, { stream: true });

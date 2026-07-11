@@ -6,14 +6,24 @@ import type {
 	RenameConversationRequest,
 } from "../../../../shared/types";
 import { fetchJson, fetchJsonOrNull } from "../../../shared/api";
+import {
+	createLocalConversation,
+	getLocalConversationPayload,
+	hasIndexedDb,
+	listLocalConversations,
+	removeLocalConversation,
+	renameLocalConversation,
+} from "../../../shared/storage/localData";
 
 export async function fetchConversations() {
+	if (hasIndexedDb()) return listLocalConversations();
 	const payload =
 		await fetchJsonOrNull<Partial<ConversationsResponse>>("/api/conversations");
 	return payload?.conversations ?? [];
 }
 
 export async function deleteConversation(conversationId: string) {
+	if (hasIndexedDb()) return removeLocalConversation(conversationId);
 	const payload = await fetchJson<Partial<ConversationsResponse>>(
 		`/api/conversations/${encodeURIComponent(conversationId)}`,
 		{ method: "DELETE" },
@@ -31,6 +41,8 @@ export async function renameConversation(
 	conversationId: string,
 	input: Required<Pick<RenameConversationRequest, "title">>,
 ) {
+	if (hasIndexedDb())
+		return renameLocalConversation(conversationId, input.title);
 	const payload = await fetchJson<Partial<ConversationsResponse>>(
 		`/api/conversations/${encodeURIComponent(conversationId)}`,
 		{
@@ -60,6 +72,7 @@ export async function createConversation(
 		>
 	>,
 ) {
+	if (hasIndexedDb()) return createLocalConversation(input);
 	const payload = await fetchJson<Partial<ConversationPayload>>(
 		"/api/conversations",
 		{
@@ -85,6 +98,7 @@ export async function createConversation(
 }
 
 export async function fetchConversation(conversationId: string) {
+	if (hasIndexedDb()) return getLocalConversationPayload(conversationId);
 	const payload = await fetchJson<Partial<ConversationPayload>>(
 		`/api/conversations/${encodeURIComponent(conversationId)}/messages`,
 		undefined,

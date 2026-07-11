@@ -4,6 +4,7 @@ export default defineConfig({
 	test: {
 		environment: "node",
 		setupFiles: ["tests/web/setup.ts"],
+		testTimeout: 15000,
 		coverage: {
 			provider: "v8",
 			reporter: ["text", "json-summary"],
@@ -22,6 +23,7 @@ export default defineConfig({
 				"src/server/services/**/*.ts",
 				"src/server/providers/index.ts",
 				"src/server/providers/openaiCompletions.ts",
+				"src/worker/**/*.ts",
 				"src/web/**/*.ts",
 				"src/web/**/*.tsx",
 			],

@@ -1,0 +1,13 @@
+name = "violoop"
+main = "src/worker/index.ts"
+compatibility_date = "2026-07-11"
+
+[assets]
+directory = "dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[vars]
+VIOLOOP_ALLOWED_ORIGINS = ""
+# Optional comma-separated provider host allowlist for production SSRF hardening.
+VIOLOOP_ALLOWED_PROVIDER_HOSTS = ""

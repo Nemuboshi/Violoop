@@ -7,6 +7,11 @@ import {
 import { NewChatModal } from "../../../features/new-chat";
 import { ProviderEditModal } from "../../../features/provider-management";
 import { TacticEditModal } from "../../../features/tactic-management";
+import {
+	downloadLocalExport,
+	importLocalExport,
+} from "../../../shared/storage/exportActions";
+import type { ImportConflictStrategy } from "../../../shared/storage/import";
 import { buttonClassName, ScrollArea } from "../../../shared/ui";
 import { ChatComposer, ChatTimeline } from "../../../widgets/chat-panel";
 import { ConfigModal } from "../../../widgets/config-modal";
@@ -16,6 +21,9 @@ import { useChatPage } from "../model/useChatPage";
 export default function ChatPage() {
 	const scrollRef = useRef<HTMLDivElement | null>(null);
 	const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+	const [importStrategy, setImportStrategy] =
+		useState<ImportConflictStrategy>("replace");
+	const [dataActionMessage, setDataActionMessage] = useState("");
 	const page = useChatPage();
 	const {
 		chatSession,
@@ -137,7 +145,7 @@ export default function ChatPage() {
 			<ConfigModal
 				view={configModalView}
 				draft={config.draft}
-				error={config.error}
+				error={config.error || dataActionMessage}
 				open={config.open}
 				saving={config.saving}
 				onDeleteProvider={(providerId) =>
@@ -147,6 +155,35 @@ export default function ChatPage() {
 					void tacticEditor.deleteStateDefinition(stateId)
 				}
 				onOpenChange={config.setOpen}
+				importStrategy={importStrategy}
+				onImportStrategy={setImportStrategy}
+				onExport={() =>
+					void downloadLocalExport()
+						.then(() => setDataActionMessage("Local data exported."))
+						.catch((error) =>
+							setDataActionMessage(
+								error instanceof Error ? error.message : "Export failed.",
+							),
+						)
+				}
+				onImport={(file, strategy) =>
+					void importLocalExport(file, strategy)
+						.then(async (result) => {
+							await Promise.all([
+								config.refreshConfig(),
+								conversations.refreshConversations(),
+								tactics.refreshLibraryStatus(),
+							]);
+							setDataActionMessage(
+								`Imported ${result.imported} records; skipped ${result.skipped}; replaced ${result.replaced}.`,
+							);
+						})
+						.catch((error) =>
+							setDataActionMessage(
+								error instanceof Error ? error.message : "Import failed.",
+							),
+						)
+				}
 				onSaveState={(state, originalId) =>
 					void tacticEditor.saveStateDefinitionDraft(state, originalId)
 				}

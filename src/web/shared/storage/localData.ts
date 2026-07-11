@@ -1,0 +1,398 @@
+import {
+	stateDefinitionSchema,
+	tacticSchema,
+} from "../../../shared/domain/runtime";
+import type {
+	ConfigResponse,
+	ConversationPayload,
+	ConversationSummary,
+	CreateConversationRequest,
+	ProviderConfig,
+	SessionCapabilities,
+	SessionClock,
+	SessionProfile,
+	StateDefinition,
+	Tactic,
+	TacticOverview,
+	TacticsMutationResponse,
+	TacticsStatusResponse,
+	UserState,
+	VioloopConfig,
+} from "../../../shared/types";
+import { createClientId } from "../lib";
+import {
+	deleteConversationLocal,
+	deleteStateDefinitionLocal,
+	deleteTacticLocal,
+	getConfig,
+	getConversationLocal,
+	getSessionClockLocal,
+	getSessionTacticIdsLocal,
+	getSessionUserStateLocal,
+	listConversationsLocal,
+	listStateDefinitionsLocal,
+	listTacticRunsLocal,
+	listTacticsLocal,
+	listTimelineItemsLocal,
+	saveConfig,
+	saveConversationLocal,
+	saveSessionClockLocal,
+	saveSessionTacticIdsLocal,
+	saveSessionUserStateLocal,
+	saveStateDefinitionLocal,
+	saveTacticLocal,
+} from "./repository";
+
+const defaultProfile: SessionProfile = {
+	assistantName: "Violoop",
+	userRole: "The user is asking for practical help.",
+	assistantRole: "A concise assistant that answers directly.",
+};
+const defaultCapabilities: SessionCapabilities = {
+	tactics: true,
+	dayProgression: false,
+	sessionState: false,
+	sceneEvents: false,
+};
+
+export function hasIndexedDb() {
+	return typeof indexedDB !== "undefined";
+}
+
+export async function ensureLocalSeed() {
+	if (!hasIndexedDb() || (await getConfig())) return;
+	const [configResponse, tacticsResponse, statesResponse] = await Promise.all([
+		fetch("/default-data/settings.json"),
+		fetch("/default-data/tactics.json"),
+		fetch("/default-data/states.json"),
+	]);
+	if (!configResponse.ok || !tacticsResponse.ok || !statesResponse.ok) {
+		throw new Error("Unable to initialize local Violoop data.");
+	}
+	const config = (await configResponse.json()) as VioloopConfig;
+	const tactics = (await tacticsResponse.json()) as Tactic[];
+	const states = (await statesResponse.json()) as StateDefinition[];
+	await saveConfig(config);
+	for (const tactic of tactics) await saveTacticLocal(tactic);
+	for (const state of states) await saveStateDefinitionLocal(state);
+}
+
+export async function getLocalConfigResponse(): Promise<ConfigResponse> {
+	await ensureLocalSeed();
+	const config = await getConfig();
+	if (!config) throw new Error("Local configuration is unavailable.");
+	const provider = config.providers[config.chat.defaultProvider];
+	const model = provider?.models?.find(
+		(item) => item.id === config.chat.defaultModel,
+	);
+	return {
+		config,
+		provider: config.chat.defaultProvider,
+		providerName: provider?.name ?? config.chat.defaultProvider,
+		baseUrl: provider?.baseUrl ?? "",
+		api: provider?.api ?? "openai-completions",
+		model: config.chat.defaultModel,
+		cache: {
+			systemPrompt: config.chat.cache?.systemPrompt ?? false,
+			cacheControlFormat: (model?.compat ?? provider?.compat)
+				?.cacheControlFormat,
+			usageInStreaming:
+				(model?.compat ?? provider?.compat)?.supportsUsageInStreaming !== false,
+		},
+	};
+}
+
+export async function saveLocalConfig(config: VioloopConfig) {
+	await ensureLocalSeed();
+	await saveConfig(config);
+	return { config };
+}
+
+export async function listLocalConversations() {
+	await ensureLocalSeed();
+	return listConversationsLocal();
+}
+
+export async function createLocalConversation(
+	input: Pick<
+		CreateConversationRequest,
+		"title" | "profile" | "capabilities"
+	> & {
+		allowedTacticIds?: string[];
+		enabledStateIds?: string[];
+	},
+): Promise<ConversationPayload> {
+	await ensureLocalSeed();
+	const now = new Date().toISOString();
+	const id = createClientId("conversation");
+	const profile = normalizeProfile(input.profile ?? defaultProfile);
+	const requestedCapabilities = normalizeCapabilities(
+		input.capabilities ?? defaultCapabilities,
+	);
+	const selectedTacticIds = requestedCapabilities.tactics
+		? await validateTacticSelection(input.allowedTacticIds)
+		: [];
+	const requiredStateIds =
+		await requiredStateIdsForSelection(selectedTacticIds);
+	const capabilities = normalizeCapabilities({
+		...requestedCapabilities,
+		sessionState:
+			requestedCapabilities.sessionState || requiredStateIds.length > 0,
+	});
+	const conversation: ConversationSummary = {
+		id,
+		title: normalizeTitle(input.title ?? "New chat"),
+		profile,
+		capabilities,
+		createdAt: now,
+		updatedAt: now,
+		messageCount: 0,
+	};
+	await saveConversationLocal(conversation);
+	await saveSessionTacticIdsLocal(id, selectedTacticIds);
+	if (capabilities.sessionState) {
+		await saveSessionUserStateLocal(
+			id,
+			await defaultStates([
+				...(input.enabledStateIds ?? []),
+				...requiredStateIds,
+			]),
+		);
+	}
+	let clock: SessionClock | null = null;
+	if (capabilities.dayProgression) {
+		clock = { conversationId: id, day: 1, updatedAt: now };
+		await saveSessionClockLocal(clock);
+	}
+	const { createLocalOpeningTimeline } = await import(
+		"../../features/chat-session/api/openingTimeline"
+	);
+	const timelineItems = await createLocalOpeningTimeline(conversation);
+	return {
+		conversation: (await getConversationLocal(id)) ?? conversation,
+		clock: (await getSessionClockLocal(id)) ?? clock,
+		timelineItems,
+	};
+}
+
+export async function getLocalConversationPayload(
+	id: string,
+): Promise<ConversationPayload> {
+	const conversation = await getConversationLocal(id);
+	if (!conversation) throw new Error(`Conversation "${id}" was not found.`);
+	return {
+		conversation,
+		clock: conversation.capabilities.dayProgression
+			? ((await getSessionClockLocal(id)) ?? null)
+			: null,
+		timelineItems: await listTimelineItemsLocal(id),
+	};
+}
+
+export async function renameLocalConversation(id: string, title: string) {
+	const conversation = await getConversationLocal(id);
+	if (!conversation) throw new Error(`Conversation "${id}" was not found.`);
+	const renamed = {
+		...conversation,
+		title: normalizeTitle(title),
+		updatedAt: new Date().toISOString(),
+	};
+	await saveConversationLocal(renamed);
+	return listLocalConversations();
+}
+
+export async function removeLocalConversation(id: string) {
+	if (!(await getConversationLocal(id)))
+		throw new Error(`Conversation "${id}" was not found.`);
+	await deleteConversationLocal(id);
+	return listLocalConversations();
+}
+
+export async function getLocalTacticsStatus(
+	conversationId?: string | null,
+): Promise<TacticsStatusResponse> {
+	await ensureLocalSeed();
+	const [tactics, stateDefinitions] = await Promise.all([
+		listTacticsLocal(),
+		listStateDefinitionsLocal(),
+	]);
+	const allowed = conversationId
+		? await getSessionTacticIdsLocal(conversationId)
+		: tactics.map((tactic) => tactic.id);
+	const userState = conversationId
+		? ((await getSessionUserStateLocal(conversationId)) ?? [])
+		: await defaultStates();
+	return {
+		conversationId: conversationId ?? undefined,
+		tactics: tactics
+			.map((tactic) => ({
+				...tactic,
+				allowedInSession: allowed.includes(tactic.id),
+				requiredStateIds: requiredStateIds(tactic),
+			}))
+			.sort((a, b) => a.name.localeCompare(b.name)),
+		stateDefinitions,
+		userState,
+		clock: conversationId
+			? ((await getSessionClockLocal(conversationId)) ?? null)
+			: null,
+		recentRuns: conversationId
+			? (await listTacticRunsLocal(conversationId)).slice(0, 10)
+			: [],
+	};
+}
+
+export async function saveLocalTactic(
+	tactic: Tactic,
+	originalId: string | null,
+): Promise<TacticsMutationResponse> {
+	await ensureLocalSeed();
+	const normalized = await validateAndNormalizeTactic(tactic);
+	if (originalId && originalId !== normalized.id)
+		throw new Error("A tactic update cannot change its id.");
+	if (
+		!originalId &&
+		(await listTacticsLocal()).some((item) => item.id === normalized.id)
+	)
+		throw new Error(`Tactic "${normalized.id}" already exists.`);
+	await saveTacticLocal(normalized);
+	return localMutationResponse();
+}
+
+export async function removeLocalTactic(id: string) {
+	if (!(await listTacticsLocal()).some((tactic) => tactic.id === id))
+		throw new Error(`Tactic "${id}" was not found.`);
+	await deleteTacticLocal(id);
+	return localMutationResponse();
+}
+
+export async function saveLocalState(
+	state: StateDefinition,
+	originalId: string | null,
+) {
+	await ensureLocalSeed();
+	const normalized = stateDefinitionSchema.parse({
+		...state,
+		id: state.id.trim(),
+		name: state.name.trim(),
+		description: state.description?.trim(),
+	});
+	if (originalId && originalId !== normalized.id)
+		throw new Error("A state update cannot change its id.");
+	if (
+		!originalId &&
+		(await listStateDefinitionsLocal()).some(
+			(item) => item.id === normalized.id,
+		)
+	)
+		throw new Error(`State "${normalized.id}" already exists.`);
+	await saveStateDefinitionLocal(normalized);
+	return localMutationResponse();
+}
+
+export async function removeLocalState(id: string) {
+	const tactics = await listTacticsLocal();
+	const dependents = tactics.filter((tactic) =>
+		requiredStateIds(tactic).includes(id),
+	);
+	if (dependents.length)
+		throw new Error(
+			`State "${id}" is used by tactics: ${dependents.map((tactic) => tactic.name).join(", ")}.`,
+		);
+	if (!(await listStateDefinitionsLocal()).some((state) => state.id === id))
+		throw new Error(`State "${id}" was not found.`);
+	await deleteStateDefinitionLocal(id);
+	return localMutationResponse();
+}
+
+async function localMutationResponse(): Promise<TacticsMutationResponse> {
+	const status = await getLocalTacticsStatus();
+	return { tactics: status.tactics, stateDefinitions: status.stateDefinitions };
+}
+
+async function validateTacticSelection(ids: string[] | undefined) {
+	const tactics = await listTacticsLocal();
+	const selected = tactics.filter((tactic) =>
+		(ids ?? tactics.map((item) => item.id)).includes(tactic.id),
+	);
+	return selected.map((tactic) => tactic.id);
+}
+
+async function requiredStateIdsForSelection(ids: string[]) {
+	const tactics = await listTacticsLocal();
+	return [
+		...new Set(
+			tactics
+				.filter((tactic) => ids.includes(tactic.id))
+				.flatMap(requiredStateIds),
+		),
+	];
+}
+
+async function validateAndNormalizeTactic(tactic: Tactic): Promise<Tactic> {
+	const normalized = tacticSchema.parse({
+		...tactic,
+		id: tactic.id.trim(),
+		name: tactic.name.trim(),
+		keywords: tactic.keywords.map((item) => item.trim()).filter(Boolean),
+		blockedKeywords: tactic.blockedKeywords
+			.map((item) => item.trim())
+			.filter(Boolean),
+		instruction: tactic.instruction.trim(),
+	});
+	const stateIds = new Set(
+		(await listStateDefinitionsLocal()).map((state) => state.id),
+	);
+	const missing = requiredStateIds(normalized).filter(
+		(id) => !stateIds.has(id),
+	);
+	if (missing.length)
+		throw new Error(`Tactic requires unknown states: ${missing.join(", ")}.`);
+	return normalized;
+}
+
+async function defaultStates(enabledStateIds?: string[]): Promise<UserState[]> {
+	const now = new Date().toISOString();
+	const enabled = enabledStateIds ? new Set(enabledStateIds) : undefined;
+	return (await listStateDefinitionsLocal())
+		.filter((state) => !enabled || enabled.has(state.id))
+		.map((state) => ({
+			key: state.id,
+			value: state.defaultValue,
+			source: "inferred" as const,
+			confidence: 0.2,
+			updatedAt: now,
+		}));
+}
+
+function normalizeProfile(profile: SessionProfile): SessionProfile {
+	return {
+		assistantName: normalizeText(
+			profile.assistantName,
+			defaultProfile.assistantName,
+			80,
+		),
+		userRole: normalizeText(profile.userRole, defaultProfile.userRole, 1000),
+		assistantRole: normalizeText(
+			profile.assistantRole,
+			defaultProfile.assistantRole,
+			1000,
+		),
+	};
+}
+function normalizeCapabilities(
+	capabilities: SessionCapabilities,
+): SessionCapabilities {
+	return { ...defaultCapabilities, ...capabilities };
+}
+function normalizeTitle(title: string) {
+	return normalizeText(title, "New chat", 80);
+}
+function normalizeText(value: string, fallback: string, max: number) {
+	return value.replace(/\s+/g, " ").trim().slice(0, max) || fallback;
+}
+function requiredStateIds(tactic: Pick<Tactic, "emotionRules">) {
+	return [...new Set(tactic.emotionRules.map((rule) => rule.key))].sort();
+}
+
+export type { ProviderConfig, TacticOverview };

@@ -1,3 +1,9 @@
+import {
+	buildCompactionGuidance as buildSharedCompactionGuidance,
+	estimateContextTokens,
+	formatCompactionPrompt,
+	splitMessagesForCompaction,
+} from "../shared/domain/runtime";
 import type {
 	ActiveProvider,
 	ChatMessage,
@@ -67,7 +73,10 @@ export async function compactConversationIfNeeded(
 		return { context };
 	}
 
-	const currentEstimate = estimateContextTokens(context);
+	const currentEstimate = estimateContextTokens(
+		context.summary,
+		context.messages,
+	);
 	if (currentEstimate < options.triggerTokens) {
 		return { context };
 	}
@@ -118,16 +127,7 @@ export async function compactConversationIfNeeded(
 }
 
 export function buildCompactionGuidance(summary: StoredCompaction | undefined) {
-	if (!summary) {
-		return "";
-	}
-
-	return [
-		"Earlier conversation context has been compacted. Treat this summary as prior conversation state.",
-		"Recent verbatim messages that follow are more authoritative if there is any conflict.",
-		"",
-		summary.summary,
-	].join("\n");
+	return buildSharedCompactionGuidance(summary);
 }
 
 export function toChatMessages(messages: TimelineItem[]): ChatMessage[] {
@@ -141,28 +141,6 @@ export function toChatMessages(messages: TimelineItem[]): ChatMessage[] {
 			role: message.role,
 			content: message.content,
 		}));
-}
-
-function splitMessagesForCompaction(
-	messages: TimelineItem[],
-	keepRecentTokens: number,
-) {
-	let keepStart = messages.length;
-	let keptTokens = 0;
-
-	for (let index = messages.length - 1; index >= 0; index -= 1) {
-		const nextTokens = estimateMessageTokens(messages[index]);
-		if (keptTokens > 0 && keptTokens + nextTokens > keepRecentTokens) {
-			break;
-		}
-		keptTokens += nextTokens;
-		keepStart = index;
-	}
-
-	return {
-		compact: messages.slice(0, keepStart),
-		keep: messages.slice(keepStart),
-	};
 }
 
 async function summarizeCompaction(input: {
@@ -191,7 +169,7 @@ async function summarizeCompaction(input: {
 		messages: [
 			{
 				role: "user",
-				content: buildSummaryPrompt(input.previousSummary, input.messages),
+				content: formatCompactionPrompt(input.previousSummary, input.messages),
 			},
 		],
 	})) {
@@ -206,52 +184,4 @@ async function summarizeCompaction(input: {
 	}
 
 	return trimmed;
-}
-
-function buildSummaryPrompt(
-	previousSummary: string | undefined,
-	messages: TimelineItem[],
-) {
-	return [
-		previousSummary
-			? `Previous compacted summary:\n${previousSummary}`
-			: "Previous compacted summary: none",
-		"",
-		"Messages to compact:",
-		formatTranscript(messages),
-		"",
-		"Return an updated compact summary that covers both the previous summary and the messages above.",
-	].join("\n");
-}
-
-function formatTranscript(messages: TimelineItem[]) {
-	return messages
-		.map(
-			(message) =>
-				`${message.role.toUpperCase()} ${message.kind.toUpperCase()}:\n${message.content}`,
-		)
-		.join("\n\n");
-}
-
-function estimateContextTokens(context: PromptContext) {
-	return (
-		estimateTextTokens(context.summary?.summary ?? "") +
-		context.messages.reduce(
-			(sum, message) => sum + estimateMessageTokens(message),
-			0,
-		)
-	);
-}
-
-function estimateMessageTokens(message: TimelineItem) {
-	return (
-		estimateTextTokens(message.role) +
-		estimateTextTokens(message.kind) +
-		estimateTextTokens(message.content) +
-		4
-	);
-}
-
-function estimateTextTokens(value: string) {
-	return Math.ceil(value.length / 4);
 }

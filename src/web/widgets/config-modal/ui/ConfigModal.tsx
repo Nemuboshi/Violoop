@@ -34,6 +34,15 @@ export type ConfigModalProps = {
 	onNewProvider(): void;
 	onNewTactic(): void;
 	onOpenChange(open: boolean): void;
+	importStrategy: import("../../../shared/storage/import").ImportConflictStrategy;
+	onExport?(): void;
+	onImportStrategy?(
+		strategy: import("../../../shared/storage/import").ImportConflictStrategy,
+	): void;
+	onImport?(
+		file: File,
+		strategy: import("../../../shared/storage/import").ImportConflictStrategy,
+	): void;
 	onSaveState(state: StateDefinition, originalId: string | null): void;
 	onSubmit(): void;
 	onUpdate(draft: ConfigSettingsFormDraft): void;
@@ -92,6 +101,10 @@ export function ConfigModal(props: ConfigModalProps) {
 									modelOptions={props.view.modelOptions}
 									thinkingLevelOptions={props.view.thinkingLevelOptions}
 									saving={props.saving}
+									importStrategy={props.importStrategy}
+									onImportStrategy={props.onImportStrategy}
+									onExport={props.onExport}
+									onImport={props.onImport}
 									onSubmit={props.onSubmit}
 									onUpdate={props.onUpdate}
 								/>

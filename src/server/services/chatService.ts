@@ -1,4 +1,8 @@
 import { randomUUID } from "node:crypto";
+import {
+	parseStructuredChatResult as parseSharedStructuredChatResult,
+	sanitizeRuntimeText,
+} from "../../shared/domain/runtime";
 import type {
 	ChatRequest,
 	ChatResponse,
@@ -338,24 +342,7 @@ async function applyStructuredChatResult(input: {
 }
 
 function parseStructuredChatResult(content: string): StructuredChatResult {
-	const trimmed = content.trim();
-	const jsonStart = trimmed.indexOf("{");
-	const jsonEnd = trimmed.lastIndexOf("}");
-	if (jsonStart < 0 || jsonEnd <= jsonStart) {
-		return {
-			messages: [{ kind: "chat", content: stripTimelineMarkers(trimmed) }],
-		};
-	}
-
-	try {
-		return JSON.parse(
-			trimmed.slice(jsonStart, jsonEnd + 1),
-		) as StructuredChatResult;
-	} catch {
-		return {
-			messages: [{ kind: "chat", content: stripTimelineMarkers(trimmed) }],
-		};
-	}
+	return parseSharedStructuredChatResult(content) as StructuredChatResult;
 }
 
 function sanitizeAssistantMessages(value: StructuredChatResult["messages"]) {
@@ -365,26 +352,13 @@ function sanitizeAssistantMessages(value: StructuredChatResult["messages"]) {
 
 	return value
 		.filter((message) => message.kind === undefined || message.kind === "chat")
-		.map((message) =>
-			sanitizeGeneratedContent(
-				stripTimelineMarkers(message.content ?? ""),
-				4000,
-			),
-		)
+		.map((message) => sanitizeGeneratedContent(message.content ?? "", 4000))
 		.filter(Boolean)
 		.slice(0, 5);
 }
 
 function sanitizeGeneratedContent(value: unknown, maxLength: number) {
-	return String(value ?? "")
-		.trim()
-		.slice(0, maxLength);
-}
-
-function stripTimelineMarkers(value: string) {
-	return value
-		.replace(/^\s*\[(?:scene|day_transition|state_update)\]\s*$/gim, "")
-		.trim();
+	return sanitizeRuntimeText(value, maxLength);
 }
 
 function sanitizeUserMessage(message: ChatRequest["message"]) {

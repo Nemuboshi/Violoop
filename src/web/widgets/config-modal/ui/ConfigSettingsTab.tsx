@@ -1,5 +1,6 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { Form } from "@base-ui/react/form";
+import type { ImportConflictStrategy } from "../../../shared/storage/import";
 import {
 	Button,
 	buttonClassName,
@@ -22,6 +23,10 @@ export function ConfigSettingsTab(props: {
 	thinkingLevelOptions: ConfigSelectOption[];
 	saving: boolean;
 	onSubmit(): void;
+	onExport?(): void;
+	importStrategy: ImportConflictStrategy;
+	onImportStrategy?(strategy: ImportConflictStrategy): void;
+	onImport?(file: File, strategy: ImportConflictStrategy): void;
 	onUpdate(draft: ConfigSettingsFormDraft): void;
 }) {
 	if (!props.draft) {
@@ -125,6 +130,40 @@ export function ConfigSettingsTab(props: {
 							})
 						}
 					/>
+				</div>
+
+				<div className="flex flex-wrap items-center gap-2 border-t border-line-soft pt-4">
+					<Button type="button" onClick={props.onExport}>
+						Export local data
+					</Button>
+					<SelectField
+						label="Import conflict behavior"
+						value={props.importStrategy}
+						options={[
+							{ label: "Replace matching local data", value: "replace" },
+							{ label: "Keep existing local data", value: "keep-existing" },
+							{ label: "Skip matching records", value: "skip" },
+						]}
+						onChange={(value) =>
+							props.onImportStrategy?.(value as ImportConflictStrategy)
+						}
+					/>
+					<label className={buttonClassName}>
+						Import JSON
+						<input
+							className="sr-only"
+							type="file"
+							accept="application/json,.json"
+							onChange={(event) => {
+								const file = event.target.files?.[0];
+								if (file) props.onImport?.(file, props.importStrategy);
+								event.currentTarget.value = "";
+							}}
+						/>
+					</label>
+					<span className="text-xs text-ink-muted">
+						Stored in this browser. Export regularly for backup.
+					</span>
 				</div>
 
 				{props.error ? (

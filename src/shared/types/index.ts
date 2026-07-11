@@ -211,6 +211,17 @@ export type ChatUsage = {
 	cacheHitRate?: number;
 };
 
+export type StoredCompaction = {
+	id: string;
+	conversationId: string;
+	summary: string;
+	firstKeptMessageId?: string;
+	coveredMessageIds: string[];
+	tokenEstimate: number;
+	createdAt: string;
+	model: string;
+};
+
 export type ChatResponse = {
 	requestId: string;
 	conversationId: string;
