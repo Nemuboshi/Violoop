@@ -29,7 +29,8 @@ export const openAiCompletionsAdapter: ChatProviderAdapter = {
 				method: "POST",
 				headers: buildHeaders(options),
 				body: JSON.stringify(buildRequestBody(options)),
-				redirect: "error",
+				// Workers fetch rejects "error"; "manual" + !ok below rejects 3xx.
+				redirect: "manual",
 				signal: controller.signal,
 			});
 		} catch (error) {
