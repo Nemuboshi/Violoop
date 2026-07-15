@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { getProviderAdapter } from "../server/providers";
-import { testProvider } from "../server/services/providerTest";
+import { getProviderAdapter } from "../providers/index";
+import { testProvider } from "../providers/providerTest";
 import type {
 	ChatMessage,
 	ChatStreamEvent,
@@ -163,23 +163,7 @@ function normalizeProvider(
 	if (!modelId)
 		throw new WorkerRequestError(400, "Provider model is required.");
 
-	let url: URL;
-	try {
-		url = new URL(input.baseUrl);
-	} catch {
-		throw new WorkerRequestError(400, "Provider base URL is invalid.");
-	}
-	if (url.protocol !== "https:" && !isLocalDevelopmentUrl(url.hostname)) {
-		throw new WorkerRequestError(400, "Provider base URL must use HTTPS.");
-	}
-	if (
-		url.username ||
-		url.password ||
-		isPrivateHostname(url.hostname) ||
-		!isAllowedProviderHost(url.hostname, allowedProviderHosts)
-	) {
-		throw new WorkerRequestError(400, "Provider base URL is not allowed.");
-	}
+	assertSafeProviderUrl(input.baseUrl, allowedProviderHosts);
 
 	const headers = Object.fromEntries(
 		Object.entries(input.headers ?? {}).filter(([key]) =>
@@ -260,9 +244,7 @@ function isLocalDevelopmentUrl(hostname: string) {
 	);
 }
 
-function isPrivateHostname(hostname: string) {
-	if (isLocalDevelopmentUrl(hostname)) return false;
-	if (hostname === "0.0.0.0" || hostname.endsWith(".internal")) return true;
+function isPrivateIpv4(hostname: string) {
 	const octets = hostname.split(".").map(Number);
 	if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet)))
 		return false;
@@ -272,6 +254,33 @@ function isPrivateHostname(hostname: string) {
 		(octets[0] === 192 && octets[1] === 168) ||
 		(octets[0] === 169 && octets[1] === 254)
 	);
+}
+
+function isPrivateHostname(hostname: string) {
+	if (isLocalDevelopmentUrl(hostname)) return false;
+	if (hostname === "0.0.0.0" || hostname.endsWith(".internal")) return true;
+
+	const bare =
+		hostname.startsWith("[") && hostname.endsWith("]")
+			? hostname.slice(1, -1)
+			: hostname;
+	const lowerBare = bare.toLowerCase();
+
+	if (lowerBare === "::") return true;
+	if (/^fe[89ab][0-9a-f]:/.test(lowerBare)) return true; // fe80::/10 link-local
+	if (/^f[cd][0-9a-f]{2}:/.test(lowerBare)) return true; // fc00::/7 ULA
+
+	// IPv4-mapped IPv6 (::ffff:a9fe:101) — the WHATWG URL parser normalizes
+	// a dotted-form address (::ffff:169.254.1.1) into this hex shape.
+	const hexMapped = lowerBare.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+	if (hexMapped) {
+		const hi = Number.parseInt(hexMapped[1], 16);
+		const lo = Number.parseInt(hexMapped[2], 16);
+		const mappedIpv4 = [hi >> 8, hi & 0xff, lo >> 8, lo & 0xff].join(".");
+		return isPrivateIpv4(mappedIpv4);
+	}
+
+	return isPrivateIpv4(hostname);
 }
 
 export class WorkerRequestError extends Error {

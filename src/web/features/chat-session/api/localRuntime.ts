@@ -21,6 +21,7 @@ import type {
 	UserState,
 	VioloopConfig,
 } from "../../../../shared/types";
+import { fetchJson } from "../../../shared/api";
 import { createClientId } from "../../../shared/lib";
 import {
 	getSessionTacticIdsLocal,
@@ -301,23 +302,11 @@ export async function callWorker(input: {
 	thinkingLevel?: VioloopConfig["chat"]["thinkingLevel"];
 	cache?: VioloopConfig["chat"]["cache"];
 }) {
-	const response = await fetch("/api/chat", {
+	return fetchJson<{ text: string; usage?: ChatUsage }>("/api/chat", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(input),
 	});
-	if (!response.ok) {
-		const payload = (await response.json().catch(() => null)) as {
-			error?: string;
-			detail?: string;
-		} | null;
-		throw new Error(
-			payload?.detail ??
-				payload?.error ??
-				`Request failed with ${response.status}`,
-		);
-	}
-	return (await response.json()) as { text: string; usage?: ChatUsage };
 }
 
 export function resolveProvider(config: VioloopConfig) {

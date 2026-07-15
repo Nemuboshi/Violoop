@@ -2,6 +2,7 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { VioloopConfig } from "../../src/shared/types";
+import { createLocalConversation } from "../../src/web/features/chat-session/api/createLocalConversation";
 import {
 	callWorker,
 	compactLocalConversation,
@@ -11,7 +12,6 @@ import {
 	runDailyStateUpdateLocal,
 	selectLocalTactics,
 } from "../../src/web/features/chat-session/api/localRuntime";
-import { createLocalConversation } from "../../src/web/shared/storage/localData";
 import {
 	clearAllLocalData,
 	getSessionClockLocal,

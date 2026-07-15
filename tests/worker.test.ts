@@ -124,6 +124,18 @@ describe("Hono Worker proxy", () => {
 		});
 		expect(localhost.status).toBe(200);
 
+		const loopbackIpv6 = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: {
+					...provider(),
+					baseUrl: "http://[::1]:8787/v1",
+				},
+				messages: [{ role: "user", content: "Hi" }],
+			}),
+		});
+		expect(loopbackIpv6.status).toBe(200);
+
 		const oversized = await workerApp.request("/api/chat", {
 			method: "POST",
 			headers: { "content-length": String(3 * 1024 * 1024) },
@@ -379,6 +391,50 @@ describe("Hono Worker proxy", () => {
 			}),
 		});
 		expect(privateB.status).toBe(400);
+		const unspecifiedIpv6 = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: { ...provider(), baseUrl: "https://[::]/v1" },
+				messages: [{ role: "user", content: "hi" }],
+			}),
+		});
+		expect(unspecifiedIpv6.status).toBe(400);
+		const linkLocalIpv6 = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: { ...provider(), baseUrl: "https://[fe80::1]/v1" },
+				messages: [{ role: "user", content: "hi" }],
+			}),
+		});
+		expect(linkLocalIpv6.status).toBe(400);
+		const uniqueLocalIpv6 = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: { ...provider(), baseUrl: "https://[fd12:3456::1]/v1" },
+				messages: [{ role: "user", content: "hi" }],
+			}),
+		});
+		expect(uniqueLocalIpv6.status).toBe(400);
+		const ipv4MappedPrivateIpv6 = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: {
+					...provider(),
+					baseUrl: "https://[::ffff:169.254.1.1]/v1",
+				},
+				messages: [{ role: "user", content: "hi" }],
+			}),
+		});
+		expect(ipv4MappedPrivateIpv6.status).toBe(400);
+		const testLinkLocalIpv6 = await workerApp.request("/api/providers/test", {
+			method: "POST",
+			body: JSON.stringify({
+				providerId: "p",
+				provider: { ...provider(), baseUrl: "https://[fe80::1]/v1" },
+				model: "model-a",
+			}),
+		});
+		expect(testLinkLocalIpv6.status).toBe(400);
 		const hugeBody = "x".repeat(2 * 1024 * 1024 + 10);
 		const oversized = await workerApp.request("/api/chat", {
 			method: "POST",

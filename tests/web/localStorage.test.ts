@@ -9,6 +9,7 @@ import type {
 	TimelineItem,
 	VioloopConfig,
 } from "../../src/shared/types";
+import { createLocalConversation } from "../../src/web/features/chat-session/api/createLocalConversation";
 import {
 	editLocalLastUserMessage,
 	sendLocalChatMessage,
@@ -32,7 +33,6 @@ import {
 import { importLocalExport } from "../../src/web/shared/storage/exportActions";
 import { importLocalData } from "../../src/web/shared/storage/import";
 import {
-	createLocalConversation,
 	ensureLocalSeed,
 	getLocalConfigResponse,
 	getLocalConversationPayload,

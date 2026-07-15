@@ -4,10 +4,9 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { VioloopConfig } from "../../src/shared/types";
 import {
-	createConversation,
 	deleteConversation,
-	fetchConversation,
-	fetchConversations,
+	getConversation,
+	listConversations,
 	renameConversation,
 } from "../../src/web/entities/conversation";
 import {
@@ -22,9 +21,10 @@ import {
 	editLastUserMessage,
 	sendChatMessage,
 } from "../../src/web/features/chat-session/api/chatApi";
+import { createLocalConversation } from "../../src/web/features/chat-session/api/createLocalConversation";
 import { useConfigSettingsWorkflow } from "../../src/web/features/config-settings";
 import {
-	fetchConfig,
+	loadConfig,
 	saveConfig,
 } from "../../src/web/features/config-settings/api/configApi";
 import { useConversationWorkflow } from "../../src/web/features/conversation-management";
@@ -41,10 +41,9 @@ import {
 } from "../../src/web/features/tactic-management";
 
 vi.mock("../../src/web/entities/conversation", () => ({
-	createConversation: vi.fn(),
 	deleteConversation: vi.fn(),
-	fetchConversation: vi.fn(),
-	fetchConversations: vi.fn(),
+	getConversation: vi.fn(),
+	listConversations: vi.fn(),
 	renameConversation: vi.fn(),
 }));
 
@@ -57,7 +56,7 @@ vi.mock("../../src/web/entities/tactic", () => ({
 }));
 
 vi.mock("../../src/web/features/config-settings/api/configApi", () => ({
-	fetchConfig: vi.fn(),
+	loadConfig: vi.fn(),
 	saveConfig: vi.fn(),
 }));
 
@@ -65,6 +64,13 @@ vi.mock("../../src/web/features/chat-session/api/chatApi", () => ({
 	editLastUserMessage: vi.fn(),
 	sendChatMessage: vi.fn(),
 }));
+
+vi.mock(
+	"../../src/web/features/chat-session/api/createLocalConversation",
+	() => ({
+		createLocalConversation: vi.fn(),
+	}),
+);
 
 function jsonResponse(payload: unknown, init: ResponseInit = {}) {
 	return new Response(JSON.stringify(payload), {
@@ -197,17 +203,17 @@ const stateDefinition = {
 };
 
 beforeEach(() => {
-	vi.mocked(createConversation).mockReset();
+	vi.mocked(createLocalConversation).mockReset();
 	vi.mocked(deleteConversation).mockReset();
-	vi.mocked(fetchConversation).mockReset();
-	vi.mocked(fetchConversations).mockReset();
+	vi.mocked(getConversation).mockReset();
+	vi.mocked(listConversations).mockReset();
 	vi.mocked(renameConversation).mockReset();
 	vi.mocked(fetchTacticsStatus).mockReset();
 	vi.mocked(saveTactic).mockReset();
 	vi.mocked(deleteTactic).mockReset();
 	vi.mocked(saveStateDefinition).mockReset();
 	vi.mocked(deleteStateDefinition).mockReset();
-	vi.mocked(fetchConfig).mockReset();
+	vi.mocked(loadConfig).mockReset();
 	vi.mocked(saveConfig).mockReset();
 	vi.mocked(sendChatMessage).mockReset();
 	vi.mocked(editLastUserMessage).mockReset();
@@ -220,7 +226,7 @@ afterEach(() => {
 
 describe("web business workflows", () => {
 	it("loads and saves global chat settings through the config workflow", async () => {
-		queueMock(vi.mocked(fetchConfig), configResponse, configResponse);
+		queueMock(vi.mocked(loadConfig), configResponse, configResponse);
 		queueMock(vi.mocked(saveConfig), { config }, () => {
 			throw new Error("Save failed");
 		});
@@ -269,7 +275,7 @@ describe("web business workflows", () => {
 	});
 
 	it("keeps conversation deletion bounded and resets the active session only when needed", async () => {
-		queueMock(vi.mocked(fetchConversations), [conversation]);
+		queueMock(vi.mocked(listConversations), [conversation]);
 		queueMock(vi.mocked(deleteConversation), [], [], () => {
 			throw new Error("Cannot delete");
 		});
@@ -341,7 +347,7 @@ describe("web business workflows", () => {
 			clock,
 			timelineItems: [assistantMessage],
 		};
-		queueMock(vi.mocked(createConversation), created, () => {
+		queueMock(vi.mocked(createLocalConversation), created, () => {
 			throw new Error("Create failed");
 		});
 		const onConversationCreated = vi.fn();
@@ -349,6 +355,7 @@ describe("web business workflows", () => {
 		const onRefreshTactics = vi.fn(async () => {});
 		const { result } = renderHook(() =>
 			useNewChatWorkflow({
+				createConversation: createLocalConversation,
 				refreshTacticLibraryStatus: vi.fn(async () => ({
 					tactics: [tactic],
 					stateDefinitions: [stateDefinition],
@@ -390,7 +397,7 @@ describe("web business workflows", () => {
 		expect(onRefreshConversations).toHaveBeenCalled();
 		expect(onRefreshTactics).toHaveBeenCalledWith("c1");
 		expect(result.current.open).toBe(false);
-		expect(createConversation).toHaveBeenCalledWith(
+		expect(createLocalConversation).toHaveBeenCalledWith(
 			expect.objectContaining({
 				capabilities: {
 					tactics: false,
@@ -467,11 +474,12 @@ describe("web business workflows", () => {
 	});
 
 	it("keeps new-chat state recoverable when creation fails without an Error object", async () => {
-		queueMock(vi.mocked(createConversation), () => {
+		queueMock(vi.mocked(createLocalConversation), () => {
 			throw "offline";
 		});
 		const { result } = renderHook(() =>
 			useNewChatWorkflow({
+				createConversation: createLocalConversation,
 				refreshTacticLibraryStatus: vi.fn(async () => ({
 					tactics: [],
 					stateDefinitions: [],
@@ -498,10 +506,11 @@ describe("web business workflows", () => {
 			clock: null,
 			timelineItems: [],
 		};
-		queueMock(vi.mocked(createConversation), created);
+		queueMock(vi.mocked(createLocalConversation), created);
 		const onConversationCreated = vi.fn();
 		const { result } = renderHook(() =>
 			useNewChatWorkflow({
+				createConversation: createLocalConversation,
 				refreshTacticLibraryStatus: vi.fn(async () => ({
 					tactics: [{ ...tactic, requiredStateIds: ["urgency"] }],
 					stateDefinitions: [stateDefinition],
@@ -545,7 +554,7 @@ describe("web business workflows", () => {
 
 		expect(result.current.error).toBe("");
 		expect(onConversationCreated).toHaveBeenCalledWith(created);
-		expect(createConversation).toHaveBeenCalledWith(
+		expect(createLocalConversation).toHaveBeenCalledWith(
 			expect.objectContaining({
 				capabilities: expect.objectContaining({ sessionState: true }),
 				enabledStateIds: ["urgency"],
@@ -556,6 +565,7 @@ describe("web business workflows", () => {
 	it("allows ordinary state toggles when no selected tactic requires them", async () => {
 		const { result } = renderHook(() =>
 			useNewChatWorkflow({
+				createConversation: createLocalConversation,
 				refreshTacticLibraryStatus: vi.fn(async () => ({
 					tactics: [{ ...tactic, requiredStateIds: [] }],
 					stateDefinitions: [stateDefinition],
@@ -585,6 +595,7 @@ describe("web business workflows", () => {
 	it("opens a new chat with empty choices when tactic library status is unavailable", async () => {
 		const { result } = renderHook(() =>
 			useNewChatWorkflow({
+				createConversation: createLocalConversation,
 				refreshTacticLibraryStatus: vi.fn(async () => null),
 				onConversationCreated: vi.fn(),
 				onRefreshConversations: vi.fn(async () => {}),
@@ -607,9 +618,10 @@ describe("web business workflows", () => {
 			clock: null,
 			timelineItems: [],
 		};
-		queueMock(vi.mocked(createConversation), created);
+		queueMock(vi.mocked(createLocalConversation), created);
 		const { result } = renderHook(() =>
 			useNewChatWorkflow({
+				createConversation: createLocalConversation,
 				refreshTacticLibraryStatus: vi.fn(async () => ({
 					tactics: [],
 					stateDefinitions: [stateDefinition],
@@ -636,7 +648,7 @@ describe("web business workflows", () => {
 			await result.current.startNewConversation();
 		});
 
-		expect(createConversation).toHaveBeenCalledWith(
+		expect(createLocalConversation).toHaveBeenCalledWith(
 			expect.objectContaining({
 				capabilities: expect.objectContaining({ sessionState: true }),
 				enabledStateIds: ["urgency"],
@@ -1174,7 +1186,7 @@ describe("web business workflows", () => {
 	});
 
 	it("reports unknown config-save failures without leaving the settings workflow saving", async () => {
-		queueMock(vi.mocked(fetchConfig), configResponse);
+		queueMock(vi.mocked(loadConfig), configResponse);
 		queueMock(vi.mocked(saveConfig), () => {
 			throw "offline";
 		});
@@ -1239,7 +1251,7 @@ describe("web business workflows", () => {
 				],
 			},
 		);
-		queueMock(vi.mocked(fetchConversation), restored);
+		queueMock(vi.mocked(getConversation), restored);
 		const onRefreshConversations = vi.fn(async () => {});
 		const onRefreshTactics = vi.fn(async () => {});
 		const { result } = renderHook(() => useChatSession());

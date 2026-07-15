@@ -21,18 +21,6 @@ export async function fetchJson<T>(
 	return (await response.json()) as T;
 }
 
-export async function fetchJsonOrNull<T>(
-	input: RequestInfo | URL,
-	init?: RequestInit,
-): Promise<T | null> {
-	const response = await fetch(input, init);
-	if (!response.ok) {
-		return null;
-	}
-
-	return (await response.json()) as T;
-}
-
 function readError(payload: unknown) {
 	if (!payload || typeof payload !== "object") {
 		return "";

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import {
 	type ConversationPayload,
-	fetchConversation,
+	getConversation,
 } from "../../../entities/conversation";
 import type { ChatUsage, TimelineItem } from "../../../entities/message";
 import {
@@ -106,7 +106,7 @@ export function useChatSession() {
 		conversationId: string,
 		effects: Pick<ChatSessionEffects, "onRefreshTactics"> = {},
 	) {
-		const restored = await fetchConversation(conversationId);
+		const restored = await getConversation(conversationId);
 		setActiveConversationId(conversationId);
 		syncActiveConversationId(conversationId);
 		setActiveProfile(restored.conversation.profile);

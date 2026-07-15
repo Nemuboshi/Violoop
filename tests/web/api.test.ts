@@ -2,10 +2,9 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	createConversation,
 	deleteConversation,
-	fetchConversation,
-	fetchConversations,
+	getConversation,
+	listConversations,
 	renameConversation,
 } from "../../src/web/entities/conversation";
 import { testProviderConnection } from "../../src/web/entities/provider";
@@ -18,11 +17,9 @@ import {
 } from "../../src/web/entities/tactic";
 import { sendChatMessage } from "../../src/web/features/chat-session";
 import { editLastUserMessage } from "../../src/web/features/chat-session/api/chatApi";
-import {
-	fetchConfig,
-	saveConfig,
-} from "../../src/web/features/config-settings";
-import { fetchJson, fetchJsonOrNull } from "../../src/web/shared/api";
+import { createLocalConversation } from "../../src/web/features/chat-session/api/createLocalConversation";
+import { loadConfig, saveConfig } from "../../src/web/features/config-settings";
+import { fetchJson } from "../../src/web/shared/api";
 import {
 	clearAllLocalData,
 	markLocalSeedComplete,
@@ -88,11 +85,9 @@ afterEach(() => {
 });
 
 describe("web api boundaries", () => {
-	it("reads successful JSON, nullable JSON, and server error details", async () => {
+	it("reads successful JSON and surfaces server error details", async () => {
 		mockFetch(
 			jsonResponse({ ok: true }),
-			jsonResponse({ ok: true }),
-			jsonResponse({ missing: true }, { status: 404 }),
 			jsonResponse({ detail: "Detailed failure" }, { status: 400 }),
 			jsonResponse({ error: "Error failure" }, { status: 500 }),
 			new Response("not json", { status: 502 }),
@@ -101,10 +96,6 @@ describe("web api boundaries", () => {
 		await expect(fetchJson<{ ok: boolean }>("/ok")).resolves.toEqual({
 			ok: true,
 		});
-		await expect(fetchJsonOrNull<{ ok: boolean }>("/ok-null")).resolves.toEqual(
-			{ ok: true },
-		);
-		await expect(fetchJsonOrNull("/missing")).resolves.toBeNull();
 		await expect(fetchJson("/bad-detail")).rejects.toThrow("Detailed failure");
 		await expect(fetchJson("/bad-error")).rejects.toThrow("Error failure");
 		await expect(fetchJson("/bad-text")).rejects.toThrow(
@@ -260,27 +251,27 @@ describe("local-only API facades", () => {
 	});
 
 	it("lists empty conversations and surfaces missing-conversation errors", async () => {
-		await expect(fetchConversations()).resolves.toEqual([]);
+		await expect(listConversations()).resolves.toEqual([]);
 		await expect(deleteConversation("gone")).rejects.toThrow(
 			'Conversation "gone" was not found.',
 		);
 		await expect(renameConversation("gone", { title: "Gone" })).rejects.toThrow(
 			'Conversation "gone" was not found.',
 		);
-		await expect(fetchConversation("missing")).rejects.toThrow(
+		await expect(getConversation("missing")).rejects.toThrow(
 			'Conversation "missing" was not found.',
 		);
 	});
 
 	it("persists conversations, config, tactics, and chat through IndexedDB", async () => {
-		await expect(fetchConfig()).resolves.toMatchObject({
+		await expect(loadConfig()).resolves.toMatchObject({
 			config: { chat: { defaultProvider: "local" } },
 		});
 		await expect(saveConfig(seedConfig)).resolves.toMatchObject({
 			config: seedConfig,
 		});
 
-		const created = await createConversation({
+		const created = await createLocalConversation({
 			title: "Session",
 			profile,
 			capabilities,
@@ -288,7 +279,7 @@ describe("local-only API facades", () => {
 			enabledStateIds: [],
 		});
 		expect(created.conversation.title).toBe("Session");
-		await expect(fetchConversations()).resolves.toEqual(
+		await expect(listConversations()).resolves.toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({ id: created.conversation.id }),
 			]),
@@ -304,7 +295,7 @@ describe("local-only API facades", () => {
 			]),
 		);
 		await expect(
-			fetchConversation(created.conversation.id),
+			getConversation(created.conversation.id),
 		).resolves.toMatchObject({
 			conversation: { id: created.conversation.id },
 		});

@@ -5,11 +5,6 @@ export type ChatMessage = {
 	content: string;
 };
 
-export type ChatRequest = {
-	conversationId: string;
-	message?: string;
-};
-
 export type SessionProfile = {
 	assistantName: string;
 	userRole: string;
@@ -303,10 +298,6 @@ export type TacticRunLogEntry = {
 		contraindications: string[];
 	};
 	createdAt: string;
-};
-
-export type ConversationsResponse = {
-	conversations: ConversationSummary[];
 };
 
 export type ConversationPayload = {

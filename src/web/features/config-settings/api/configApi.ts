@@ -8,7 +8,7 @@ import {
 	saveLocalConfig,
 } from "../../../shared/storage/localData";
 
-export async function fetchConfig(): Promise<ConfigResponse> {
+export async function loadConfig(): Promise<ConfigResponse> {
 	return getLocalConfigResponse();
 }
 

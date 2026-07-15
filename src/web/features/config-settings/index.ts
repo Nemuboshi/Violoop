@@ -1,4 +1,4 @@
-export { fetchConfig, saveConfig } from "./api/configApi";
+export { loadConfig, saveConfig } from "./api/configApi";
 export {
 	type ChatSettingsDraft,
 	fromSettingsDraft,

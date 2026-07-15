@@ -1,18 +1,16 @@
 import type {
 	ConversationPayload,
 	ConversationSummary,
-	CreateConversationRequest,
 	RenameConversationRequest,
 } from "../../../../shared/types";
 import {
-	createLocalConversation,
 	getLocalConversationPayload,
 	listLocalConversations,
 	removeLocalConversation,
 	renameLocalConversation,
 } from "../../../shared/storage/localData";
 
-export async function fetchConversations() {
+export async function listConversations() {
 	return listLocalConversations();
 }
 
@@ -27,22 +25,7 @@ export async function renameConversation(
 	return renameLocalConversation(conversationId, input.title);
 }
 
-export async function createConversation(
-	input: Required<
-		Pick<
-			CreateConversationRequest,
-			| "title"
-			| "profile"
-			| "capabilities"
-			| "allowedTacticIds"
-			| "enabledStateIds"
-		>
-	>,
-) {
-	return createLocalConversation(input);
-}
-
-export async function fetchConversation(conversationId: string) {
+export async function getConversation(conversationId: string) {
 	return getLocalConversationPayload(conversationId);
 }
 

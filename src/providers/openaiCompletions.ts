@@ -5,7 +5,7 @@ import type {
 	PromptBlock,
 	StreamChatOptions,
 	ThinkingLevel,
-} from "../../shared/types";
+} from "../shared/types";
 
 type OpenAiContent =
 	| string

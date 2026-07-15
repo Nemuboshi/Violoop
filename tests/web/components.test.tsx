@@ -13,13 +13,13 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "../../src/web/app/App";
 import {
-	createConversation,
 	deleteConversation,
-	fetchConversation,
-	fetchConversations,
+	getConversation,
+	listConversations,
 } from "../../src/web/entities/conversation";
 import { fetchTacticsStatus } from "../../src/web/entities/tactic";
-import { fetchConfig } from "../../src/web/features/config-settings/api/configApi";
+import { createLocalConversation } from "../../src/web/features/chat-session/api/createLocalConversation";
+import { loadConfig } from "../../src/web/features/config-settings/api/configApi";
 import {
 	DeleteConversationModal,
 	RenameConversationModal,
@@ -51,10 +51,9 @@ import { ConfigSettingsTab } from "../../src/web/widgets/config-modal/ui/ConfigS
 import { SidebarContent } from "../../src/web/widgets/sidebar";
 
 vi.mock("../../src/web/entities/conversation", () => ({
-	createConversation: vi.fn(),
 	deleteConversation: vi.fn(),
-	fetchConversation: vi.fn(),
-	fetchConversations: vi.fn(),
+	getConversation: vi.fn(),
+	listConversations: vi.fn(),
 	renameConversation: vi.fn(),
 }));
 
@@ -67,9 +66,16 @@ vi.mock("../../src/web/entities/tactic", () => ({
 }));
 
 vi.mock("../../src/web/features/config-settings/api/configApi", () => ({
-	fetchConfig: vi.fn(),
+	loadConfig: vi.fn(),
 	saveConfig: vi.fn(),
 }));
+
+vi.mock(
+	"../../src/web/features/chat-session/api/createLocalConversation",
+	() => ({
+		createLocalConversation: vi.fn(),
+	}),
+);
 
 const stateDefinitions = [
 	{
@@ -1489,7 +1495,7 @@ describe("web components", () => {
 			recentRuns: [],
 		};
 
-		vi.mocked(fetchConfig).mockResolvedValue({
+		vi.mocked(loadConfig).mockResolvedValue({
 			config: appConfig,
 			provider: "local",
 			providerName: "Local",
@@ -1498,8 +1504,8 @@ describe("web components", () => {
 			model: "model-a",
 			cache: { systemPrompt: true, usageInStreaming: true },
 		});
-		vi.mocked(fetchConversations).mockResolvedValue([conversation]);
-		vi.mocked(fetchConversation).mockResolvedValue({
+		vi.mocked(listConversations).mockResolvedValue([conversation]);
+		vi.mocked(getConversation).mockResolvedValue({
 			conversation,
 			clock,
 			timelineItems: [
@@ -1515,7 +1521,7 @@ describe("web components", () => {
 				},
 			],
 		});
-		vi.mocked(createConversation).mockResolvedValue({
+		vi.mocked(createLocalConversation).mockResolvedValue({
 			conversation,
 			clock,
 			timelineItems: [],

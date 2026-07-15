@@ -2,6 +2,7 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { VioloopConfig } from "../../src/shared/types";
+import { createLocalConversation } from "../../src/web/features/chat-session/api/createLocalConversation";
 import {
 	editLocalLastUserMessage,
 	sendLocalChatMessage,
@@ -10,7 +11,6 @@ import * as localRuntime from "../../src/web/features/chat-session/api/localRunt
 import { runDailyStateUpdateLocal } from "../../src/web/features/chat-session/api/localRuntime";
 import { createLocalOpeningTimeline } from "../../src/web/features/chat-session/api/openingTimeline";
 import { deleteLocal } from "../../src/web/shared/storage/database";
-import { createLocalConversation } from "../../src/web/shared/storage/localData";
 import * as repository from "../../src/web/shared/storage/repository";
 import {
 	appendLocalItemsAtomic,
@@ -143,6 +143,31 @@ describe("local chat message durability", () => {
 			}),
 		).rejects.toThrow("persist fail");
 		saveSpy.mockRestore();
+	});
+
+	it("falls back when profile fields are blank or omitted", async () => {
+		const created = await createLocalConversation({
+			title: "   ",
+			profile: {
+				assistantName: "",
+				userRole: "   ",
+				assistantRole: null as unknown as string,
+			},
+			capabilities: {
+				tactics: false,
+				dayProgression: false,
+				sessionState: false,
+				sceneEvents: false,
+			},
+			allowedTacticIds: [],
+			enabledStateIds: [],
+		});
+		expect(created.conversation.title).toBe("New chat");
+		expect(created.conversation.profile.assistantName).toBe("Violoop");
+		expect(created.conversation.profile.userRole.length).toBeGreaterThan(0);
+		expect(created.conversation.profile.assistantRole.length).toBeGreaterThan(
+			0,
+		);
 	});
 
 	it("requires local configuration to be available before starting a turn", async () => {

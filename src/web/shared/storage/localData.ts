@@ -5,12 +5,7 @@ import {
 import type {
 	ConfigResponse,
 	ConversationPayload,
-	ConversationSummary,
-	CreateConversationRequest,
 	ProviderConfig,
-	SessionCapabilities,
-	SessionClock,
-	SessionProfile,
 	StateDefinition,
 	Tactic,
 	TacticOverview,
@@ -19,10 +14,8 @@ import type {
 	UserState,
 	VioloopConfig,
 } from "../../../shared/types";
-import { createClientId } from "../lib";
 import { getLocal, listLocal, putLocal } from "./database";
 import {
-	appendLocalItemsAtomic,
 	deleteConversationLocal,
 	deleteStateDefinitionLocal,
 	deleteTacticLocal,
@@ -38,24 +31,10 @@ import {
 	listTimelineItemsLocal,
 	saveConfig,
 	saveConversationLocal,
-	saveSessionClockLocal,
 	saveSessionTacticIdsLocal,
-	saveSessionUserStateLocal,
 	saveStateDefinitionLocal,
 	saveTacticLocal,
 } from "./repository";
-
-const defaultProfile: SessionProfile = {
-	assistantName: "Violoop",
-	userRole: "The user is asking for practical help.",
-	assistantRole: "A concise assistant that answers directly.",
-};
-const defaultCapabilities: SessionCapabilities = {
-	tactics: true,
-	dayProgression: false,
-	sessionState: false,
-	sceneEvents: false,
-};
 
 export function hasIndexedDb() {
 	return typeof indexedDB !== "undefined";
@@ -136,77 +115,6 @@ export async function saveLocalConfig(config: VioloopConfig) {
 export async function listLocalConversations() {
 	await ensureLocalSeed();
 	return listConversationsLocal();
-}
-
-export async function createLocalConversation(
-	input: Pick<
-		CreateConversationRequest,
-		"title" | "profile" | "capabilities"
-	> & {
-		allowedTacticIds?: string[];
-		enabledStateIds?: string[];
-	},
-): Promise<ConversationPayload> {
-	await ensureLocalSeed();
-	const now = new Date().toISOString();
-	const id = createClientId("conversation");
-	const profile = normalizeProfile(input.profile);
-	const requestedCapabilities = normalizeCapabilities(input.capabilities);
-	const selectedTacticIds = requestedCapabilities.tactics
-		? await validateTacticSelection(input.allowedTacticIds)
-		: [];
-	const requiredStateIds =
-		await requiredStateIdsForSelection(selectedTacticIds);
-	const capabilities = normalizeCapabilities({
-		...requestedCapabilities,
-		sessionState:
-			requestedCapabilities.sessionState || requiredStateIds.length > 0,
-	});
-	const conversation: ConversationSummary = {
-		id,
-		title: normalizeTitle(input.title),
-		profile,
-		capabilities,
-		createdAt: now,
-		updatedAt: now,
-		messageCount: 0,
-	};
-	let clock: SessionClock | null = null;
-	if (capabilities.dayProgression) {
-		clock = { conversationId: id, day: 1, updatedAt: now };
-	}
-	const sessionStates = capabilities.sessionState
-		? await defaultStates([
-				...(input.enabledStateIds || []),
-				...requiredStateIds,
-			])
-		: null;
-	const { createLocalOpeningTimeline } = await import(
-		"../../features/chat-session/api/openingTimeline"
-	);
-	const timelineItems = await createLocalOpeningTimeline(conversation);
-	try {
-		await saveConversationLocal(conversation);
-		await saveSessionTacticIdsLocal(id, selectedTacticIds);
-		if (sessionStates) await saveSessionUserStateLocal(id, sessionStates);
-		if (clock) await saveSessionClockLocal(clock);
-		if (timelineItems.length)
-			await appendLocalItemsAtomic(conversation, timelineItems);
-	} catch (error) {
-		await deleteConversationLocal(id);
-		throw error;
-	}
-	return {
-		conversation: {
-			...conversation,
-			messageCount: timelineItems.filter(
-				(item) => item.promptVisibility !== "hidden",
-			).length,
-			updatedAt: timelineItems.at(-1)?.createdAt ?? conversation.updatedAt,
-		},
-		clock,
-		timelineItems,
-	};
 }
 
 export async function getLocalConversationPayload(
@@ -355,25 +263,6 @@ async function localMutationResponse(): Promise<TacticsMutationResponse> {
 	return { tactics: status.tactics, stateDefinitions: status.stateDefinitions };
 }
 
-async function validateTacticSelection(ids: string[] | undefined) {
-	const tactics = await listTacticsLocal();
-	const selected = tactics.filter((tactic) =>
-		(ids ?? tactics.map((item) => item.id)).includes(tactic.id),
-	);
-	return selected.map((tactic) => tactic.id);
-}
-
-async function requiredStateIdsForSelection(ids: string[]) {
-	const tactics = await listTacticsLocal();
-	return [
-		...new Set(
-			tactics
-				.filter((tactic) => ids.includes(tactic.id))
-				.flatMap(requiredStateIds),
-		),
-	];
-}
-
 async function validateAndNormalizeTactic(tactic: Tactic): Promise<Tactic> {
 	const normalized = tacticSchema.parse({
 		...tactic,
@@ -396,7 +285,9 @@ async function validateAndNormalizeTactic(tactic: Tactic): Promise<Tactic> {
 	return normalized;
 }
 
-async function defaultStates(enabledStateIds?: string[]): Promise<UserState[]> {
+export async function defaultStates(
+	enabledStateIds?: string[],
+): Promise<UserState[]> {
 	const now = new Date().toISOString();
 	const enabled = enabledStateIds ? new Set(enabledStateIds) : undefined;
 	return (await listStateDefinitionsLocal())
@@ -410,27 +301,7 @@ async function defaultStates(enabledStateIds?: string[]): Promise<UserState[]> {
 		}));
 }
 
-function normalizeProfile(profile?: SessionProfile | null): SessionProfile {
-	return {
-		assistantName: normalizeText(
-			profile?.assistantName,
-			defaultProfile.assistantName,
-			80,
-		),
-		userRole: normalizeText(profile?.userRole, defaultProfile.userRole, 1000),
-		assistantRole: normalizeText(
-			profile?.assistantRole,
-			defaultProfile.assistantRole,
-			1000,
-		),
-	};
-}
-function normalizeCapabilities(
-	capabilities?: Partial<SessionCapabilities> | null,
-): SessionCapabilities {
-	return { ...defaultCapabilities, ...capabilities };
-}
-function normalizeTitle(title?: string | null) {
+export function normalizeTitle(title?: string | null) {
 	return normalizeText(title, "New chat", 80);
 }
 function normalizeText(
@@ -444,7 +315,7 @@ function normalizeText(
 		.slice(0, max);
 	return normalized.length > 0 ? normalized : fallback;
 }
-function requiredStateIds(tactic: Pick<Tactic, "emotionRules">) {
+export function requiredStateIds(tactic: Pick<Tactic, "emotionRules">) {
 	return [...new Set(tactic.emotionRules.map((rule) => rule.key))].sort();
 }
 

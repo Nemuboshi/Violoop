@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
 	type ConversationSummary,
 	deleteConversation,
-	fetchConversations,
+	listConversations,
 	renameConversation,
 } from "../../../entities/conversation";
 
@@ -24,7 +24,7 @@ export function useConversationWorkflow(
 	const [renamingConversation, setRenamingConversation] = useState(false);
 
 	async function refreshConversations() {
-		const next = await fetchConversations();
+		const next = await listConversations();
 		setConversations(next);
 		return next;
 	}

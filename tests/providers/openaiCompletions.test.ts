@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	openAiCompletionsAdapter,
 	ProviderRequestError,
-} from "../../src/server/providers/openaiCompletions";
+} from "../../src/providers/openaiCompletions";
 import type {
 	ActiveProvider,
 	StreamChatOptions,
@@ -509,7 +509,7 @@ describe("openai completions provider adapter", () => {
 
 describe("getProviderAdapter", () => {
 	it("rejects unsupported provider APIs", async () => {
-		const { getProviderAdapter } = await import("../../src/server/providers");
+		const { getProviderAdapter } = await import("../../src/providers/index");
 		expect(() => getProviderAdapter("missing" as never)).toThrow(
 			'Provider API "missing" is not supported.',
 		);

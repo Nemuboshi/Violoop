@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { testProvider } from "../../src/server/services/providerTest";
+import { testProvider } from "../../src/providers/providerTest";
 
 describe("testProvider", () => {
 	it("captures usage events and stops after enough text", async () => {

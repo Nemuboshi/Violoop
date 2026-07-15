@@ -53,13 +53,13 @@ The project uses these main source areas:
 ```text
 src/
   worker/
-  server/providers/   # provider adapters still used by Worker
+  providers/          # provider adapters used by the Worker
   shared/
   web/
 ```
 
 - `src/worker`: Hono Worker — health, chat proxy, provider test, SSRF guards, SPA assets fallback.
-- `src/server/providers` (+ `services/providerTest`): OpenAI-compatible adapter shared by Worker (not a Fastify app).
+- `src/providers`: OpenAI-compatible provider adapters used by the Worker.
 - `src/shared`: cross-runtime contracts and domain logic used by Worker and web.
 - `src/web`: React frontend organized with Feature-Sliced Design; IndexedDB holds app data.
 
@@ -178,7 +178,6 @@ Tactics are a modified skills-like system for chat behavior.
 - Select/popover positioning and arrows should follow Base UI examples.
 - Use custom scroll area styling instead of native scrollbars where visible.
 - Mobile layout should prioritize the chat area. Secondary controls belong in a top-right hamburger/popover menu that remains scrollable.
-- Use Playwright or browser verification for visual regressions when layout or responsive behavior changes.
 
 ## Testing and Quality
 

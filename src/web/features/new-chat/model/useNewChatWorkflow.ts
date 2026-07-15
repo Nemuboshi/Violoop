@@ -1,8 +1,5 @@
 import { useState } from "react";
-import {
-	type ConversationPayload,
-	createConversation,
-} from "../../../entities/conversation";
+import type { ConversationPayload } from "../../../entities/conversation";
 import {
 	defaultNewChatDraft,
 	defaultSessionCapabilities,
@@ -23,6 +20,13 @@ export type NewChatDraft = SessionProfile &
 	};
 
 type UseNewChatWorkflowOptions = {
+	createConversation: (input: {
+		title: string;
+		profile: SessionProfile;
+		capabilities: SessionCapabilities;
+		allowedTacticIds: string[];
+		enabledStateIds: string[];
+	}) => Promise<ConversationPayload>;
 	refreshTacticLibraryStatus: () => Promise<TacticsStatusResponse | null>;
 	onConversationCreated: (payload: ConversationPayload) => void;
 	onRefreshConversations: () => Promise<unknown>;
@@ -107,7 +111,7 @@ export function useNewChatWorkflow(options: UseNewChatWorkflowOptions) {
 			const enabledStateIds = sessionState
 				? [...new Set([...selectedStateIds, ...requiredStateIds])]
 				: [];
-			const created = await createConversation({
+			const created = await options.createConversation({
 				title: draft.title,
 				profile: toSessionProfile(draft),
 				capabilities: toSessionCapabilities({ ...draft, sessionState }),

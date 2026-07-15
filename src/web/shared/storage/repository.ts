@@ -20,16 +20,6 @@ import {
 	runLocalTransaction,
 } from "./database";
 
-export type ConversationExport = {
-	conversation: ConversationSummary;
-	timelineItems: TimelineItem[];
-	compactions: StoredCompaction[];
-	clock?: SessionClock;
-	tacticIds: string[];
-	userState: UserState[];
-	tacticRuns: TacticRunLogEntry[];
-};
-
 export async function getConfig() {
 	const stored = await getLocal<{ id: string; config: VioloopConfig }>(
 		"config",

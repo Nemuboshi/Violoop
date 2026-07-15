@@ -8,6 +8,10 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 
 [vars]
+# Comma-separated allowed origins for /api/* CORS. Empty = allow any origin
+# (open policy, fine for local/dev, DANGEROUS on a public deployment).
 VIOLOOP_ALLOWED_ORIGINS = ""
-# Optional comma-separated provider host allowlist for production SSRF hardening.
+# Comma-separated provider host allowlist. Empty = allow any non-private
+# HTTPS host (open policy, fine for local/dev, DANGEROUS on a public
+# deployment — set this before deploying publicly).
 VIOLOOP_ALLOWED_PROVIDER_HOSTS = ""

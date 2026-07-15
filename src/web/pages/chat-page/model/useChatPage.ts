@@ -9,7 +9,10 @@ import {
 	timelineSpeakerClassName,
 } from "../../../entities/message";
 import { defaultSessionCapabilities } from "../../../entities/session";
-import { useChatSession } from "../../../features/chat-session";
+import {
+	createLocalConversation,
+	useChatSession,
+} from "../../../features/chat-session";
 import {
 	isThinkingLevel,
 	thinkingLevelOptions,
@@ -72,6 +75,7 @@ export function useChatPage() {
 		setConfigError: config.setError,
 	});
 	const newChat = useNewChatWorkflow({
+		createConversation: createLocalConversation,
 		refreshTacticLibraryStatus: tactics.refreshLibraryStatus,
 		onConversationCreated: chatSession.applyConversation,
 		onRefreshConversations: conversations.refreshConversations,

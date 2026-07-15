@@ -3,8 +3,8 @@ import type {
 	ChatUsage,
 	ProviderConfig,
 	ProviderTestResponse,
-} from "../../shared/types";
-import { getProviderAdapter } from "../providers";
+} from "../shared/types";
+import { getProviderAdapter } from "./index";
 
 export async function testProvider(
 	providerId: string,

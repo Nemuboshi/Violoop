@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ConfigResponse, VioloopConfig } from "../../../../shared/types";
-import { fetchConfig, saveConfig } from "../api/configApi";
+import { loadConfig, saveConfig } from "../api/configApi";
 import { fromSettingsDraft, toSettingsDraft } from "./configDraft";
 
 type UseConfigSettingsWorkflowOptions = {
@@ -19,7 +19,7 @@ export function useConfigSettingsWorkflow(
 	const [saving, setSaving] = useState(false);
 
 	async function refreshConfig() {
-		const payload = await fetchConfig();
+		const payload = await loadConfig();
 		setConfig(payload);
 		setDraft(toSettingsDraft(payload.config));
 		return payload;

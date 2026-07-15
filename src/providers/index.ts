@@ -1,4 +1,4 @@
-import type { ChatProviderAdapter, ProviderApi } from "../../shared/types";
+import type { ChatProviderAdapter, ProviderApi } from "../shared/types";
 import { openAiCompletionsAdapter } from "./openaiCompletions";
 
 const adapters: Record<ProviderApi, ChatProviderAdapter> = {

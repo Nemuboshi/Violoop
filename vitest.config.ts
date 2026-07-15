@@ -10,9 +10,9 @@ export default defineConfig({
 			reporter: ["text", "json-summary"],
 			include: [
 				"src/shared/**/*.ts",
-				"src/server/providers/index.ts",
-				"src/server/providers/openaiCompletions.ts",
-				"src/server/services/providerTest.ts",
+				"src/providers/index.ts",
+				"src/providers/openaiCompletions.ts",
+				"src/providers/providerTest.ts",
 				"src/worker/**/*.ts",
 				"src/web/**/*.ts",
 				"src/web/**/*.tsx",

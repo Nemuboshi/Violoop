@@ -1,8 +1,10 @@
 node_modules
 dist
 coverage
+coverage-report.txt
 .env
 .env.local
 *.log
 .logs
-data
+.wrangler/
+.playwright-mcp/

@@ -3,10 +3,9 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	createConversation,
 	deleteConversation,
-	fetchConversation,
-	fetchConversations,
+	getConversation,
+	listConversations,
 	renameConversation,
 } from "../../src/web/entities/conversation";
 import {
@@ -21,16 +20,15 @@ import {
 	sendChatMessage,
 } from "../../src/web/features/chat-session/api/chatApi";
 import {
-	fetchConfig,
+	loadConfig,
 	saveConfig,
 } from "../../src/web/features/config-settings/api/configApi";
 import { useChatPage } from "../../src/web/pages/chat-page/model/useChatPage";
 
 vi.mock("../../src/web/entities/conversation", () => ({
-	createConversation: vi.fn(),
 	deleteConversation: vi.fn(),
-	fetchConversation: vi.fn(),
-	fetchConversations: vi.fn(),
+	getConversation: vi.fn(),
+	listConversations: vi.fn(),
 	renameConversation: vi.fn(),
 }));
 
@@ -43,7 +41,7 @@ vi.mock("../../src/web/entities/tactic", () => ({
 }));
 
 vi.mock("../../src/web/features/config-settings/api/configApi", () => ({
-	fetchConfig: vi.fn(),
+	loadConfig: vi.fn(),
 	saveConfig: vi.fn(),
 }));
 
@@ -178,17 +176,16 @@ const timelineItems = [
 
 beforeEach(() => {
 	localStorage.clear();
-	vi.mocked(createConversation).mockReset();
 	vi.mocked(deleteConversation).mockReset();
-	vi.mocked(fetchConversation).mockReset();
-	vi.mocked(fetchConversations).mockReset();
+	vi.mocked(getConversation).mockReset();
+	vi.mocked(listConversations).mockReset();
 	vi.mocked(renameConversation).mockReset();
 	vi.mocked(fetchTacticsStatus).mockReset();
 	vi.mocked(saveTactic).mockReset();
 	vi.mocked(deleteTactic).mockReset();
 	vi.mocked(saveStateDefinition).mockReset();
 	vi.mocked(deleteStateDefinition).mockReset();
-	vi.mocked(fetchConfig).mockReset();
+	vi.mocked(loadConfig).mockReset();
 	vi.mocked(saveConfig).mockReset();
 	vi.mocked(sendChatMessage).mockReset();
 	vi.mocked(editLastUserMessage).mockReset();
@@ -201,9 +198,9 @@ afterEach(() => {
 describe("chat page composition model", () => {
 	it("restores the last active conversation from localStorage on load", async () => {
 		localStorage.setItem("violoop.activeConversationId", "c1");
-		vi.mocked(fetchConfig).mockResolvedValue(configResponse as never);
-		vi.mocked(fetchConversations).mockResolvedValue([conversation]);
-		vi.mocked(fetchConversation).mockResolvedValue({
+		vi.mocked(loadConfig).mockResolvedValue(configResponse as never);
+		vi.mocked(listConversations).mockResolvedValue([conversation]);
+		vi.mocked(getConversation).mockResolvedValue({
 			conversation,
 			clock,
 			timelineItems: [],
@@ -219,12 +216,12 @@ describe("chat page composition model", () => {
 		await waitFor(() => {
 			expect(result.current.chatSession.activeConversationId).toBe("c1");
 		});
-		expect(fetchConversation).toHaveBeenCalledWith("c1");
+		expect(getConversation).toHaveBeenCalledWith("c1");
 	});
 
 	it("keeps selected-session panels stable while global config is still loading", () => {
-		vi.mocked(fetchConfig).mockImplementation(() => new Promise(() => {}));
-		vi.mocked(fetchConversations).mockImplementation(
+		vi.mocked(loadConfig).mockImplementation(() => new Promise(() => {}));
+		vi.mocked(listConversations).mockImplementation(
 			() => new Promise(() => {}),
 		);
 		const { result } = renderHook(() => useChatPage());
@@ -283,14 +280,9 @@ describe("chat page composition model", () => {
 	});
 
 	it("maps loaded app state into widget views and delegates page actions", async () => {
-		queueMock(vi.mocked(fetchConfig), configResponse);
-		queueMock(
-			vi.mocked(fetchConversations),
-			[conversation],
-			[conversation],
-			[],
-		);
-		queueMock(vi.mocked(fetchConversation), {
+		queueMock(vi.mocked(loadConfig), configResponse);
+		queueMock(vi.mocked(listConversations), [conversation], [conversation], []);
+		queueMock(vi.mocked(getConversation), {
 			conversation,
 			clock,
 			timelineItems,
@@ -523,9 +515,9 @@ describe("chat page composition model", () => {
 			},
 		};
 		const noKeywordTactic = { ...tactic, keywords: [] };
-		queueMock(vi.mocked(fetchConfig), sparseConfigResponse);
-		queueMock(vi.mocked(fetchConversations), [conversation]);
-		queueMock(vi.mocked(fetchConversation), {
+		queueMock(vi.mocked(loadConfig), sparseConfigResponse);
+		queueMock(vi.mocked(listConversations), [conversation]);
+		queueMock(vi.mocked(getConversation), {
 			conversation,
 			clock,
 			timelineItems: [],

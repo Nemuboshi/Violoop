@@ -20,12 +20,18 @@ export async function testProviderConnection(
 			body: JSON.stringify(input),
 		},
 		{
-			errorMessage: (status, payload) =>
-				typeof payload?.error === "string"
-					? payload.error
-					: typeof payload?.detail === "string"
-						? payload.detail
-						: `Provider test failed with ${status}`,
+			errorMessage: (status, payload) => {
+				const error =
+					typeof payload?.error === "string" ? payload.error : undefined;
+				const detail =
+					typeof payload?.detail === "string" && payload.detail.trim()
+						? payload.detail.trim()
+						: undefined;
+				if (error && detail && detail !== error) {
+					return `${error}\n${detail}`;
+				}
+				return error ?? detail ?? `Provider test failed with ${status}`;
+			},
 		},
 	);
 }
