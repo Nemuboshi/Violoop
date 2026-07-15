@@ -3,14 +3,14 @@ import {
 	tacticSchema,
 } from "../../../shared/domain/runtime";
 import type {
-	ConfigResponse,
+	AppConfigSnapshot,
 	ConversationPayload,
 	ProviderConfig,
 	StateDefinition,
 	Tactic,
 	TacticOverview,
-	TacticsMutationResponse,
-	TacticsStatusResponse,
+	TacticsLibrarySnapshot,
+	TacticsStatus,
 	UserState,
 	VioloopConfig,
 } from "../../../shared/types";
@@ -81,7 +81,7 @@ export async function ensureLocalSeed() {
 	});
 }
 
-export async function getLocalConfigResponse(): Promise<ConfigResponse> {
+export async function getLocalConfig(): Promise<AppConfigSnapshot> {
 	await ensureLocalSeed();
 	const config = await getConfig();
 	if (!config) throw new Error("Local configuration is unavailable.");
@@ -152,7 +152,7 @@ export async function removeLocalConversation(id: string) {
 
 export async function getLocalTacticsStatus(
 	conversationId?: string | null,
-): Promise<TacticsStatusResponse> {
+): Promise<TacticsStatus> {
 	await ensureLocalSeed();
 	const [tactics, stateDefinitions] = await Promise.all([
 		listTacticsLocal(),
@@ -187,7 +187,7 @@ export async function getLocalTacticsStatus(
 export async function saveLocalTactic(
 	tactic: Tactic,
 	originalId: string | null,
-): Promise<TacticsMutationResponse> {
+): Promise<TacticsLibrarySnapshot> {
 	await ensureLocalSeed();
 	const normalized = await validateAndNormalizeTactic(tactic);
 	if (originalId && originalId !== normalized.id)
@@ -258,7 +258,7 @@ export async function removeLocalState(id: string) {
 	return localMutationResponse();
 }
 
-async function localMutationResponse(): Promise<TacticsMutationResponse> {
+async function localMutationResponse(): Promise<TacticsLibrarySnapshot> {
 	const status = await getLocalTacticsStatus();
 	return { tactics: status.tactics, stateDefinitions: status.stateDefinitions };
 }

@@ -1,5 +1,8 @@
 import { useState } from "react";
-import type { ConfigResponse, VioloopConfig } from "../../../../shared/types";
+import type {
+	AppConfigSnapshot,
+	VioloopConfig,
+} from "../../../../shared/types";
 import { testProviderConnection } from "../../../entities/provider";
 import type { ResultPopoverResult } from "../../../shared/ui";
 import {
@@ -11,7 +14,7 @@ import {
 } from "./providerDraft";
 
 type UseProviderWorkflowOptions = {
-	config: ConfigResponse | null;
+	config: AppConfigSnapshot | null;
 	saveAppConfig: (config: VioloopConfig) => Promise<void>;
 	setConfigError: (message: string) => void;
 	setConfigSaving: (saving: boolean) => void;

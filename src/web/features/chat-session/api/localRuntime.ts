@@ -31,7 +31,7 @@ import {
 	saveSessionClockLocal,
 	saveSessionUserStateLocal,
 	saveTacticRunLocal,
-} from "../../../shared/storage/repository";
+} from "../../../shared/storage";
 
 const dailyStateJobs = new Set<string>();
 

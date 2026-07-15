@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+﻿// @vitest-environment jsdom
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -11,12 +11,14 @@ import { testProviderConnection } from "../../src/web/entities/provider";
 import {
 	deleteStateDefinition,
 	deleteTactic,
-	fetchTacticsStatus,
+	loadTacticsStatus,
 	saveStateDefinition,
 	saveTactic,
 } from "../../src/web/entities/tactic";
-import { sendChatMessage } from "../../src/web/features/chat-session";
-import { editLastUserMessage } from "../../src/web/features/chat-session/api/chatApi";
+import {
+	editLastUserMessage,
+	sendChatMessage,
+} from "../../src/web/features/chat-session";
 import { createLocalConversation } from "../../src/web/features/chat-session/api/createLocalConversation";
 import { loadConfig, saveConfig } from "../../src/web/features/config-settings";
 import { fetchJson } from "../../src/web/shared/api";
@@ -25,6 +27,8 @@ import {
 	markLocalSeedComplete,
 	saveConfig as saveRepoConfig,
 } from "../../src/web/shared/storage/repository";
+import { createWebVioloopConfig } from "../fixtures/config";
+import { createCapabilities, createSessionProfile } from "../fixtures/session";
 
 function jsonResponse(payload: unknown, init: ResponseInit = {}) {
 	return new Response(JSON.stringify(payload), {
@@ -45,40 +49,19 @@ function mockFetch(...responses: Array<Response | (() => Response)>) {
 	return fetchMock;
 }
 
-const profile = {
-	assistantName: "Violoop",
-	userRole: "User",
-	assistantRole: "Assistant",
-};
+const profile = createSessionProfile({ assistantName: "Violoop" });
 
-const capabilities = {
-	tactics: false,
-	dayProgression: false,
-	sessionState: false,
-	sceneEvents: false,
-};
+const capabilities = createCapabilities();
 
-const seedConfig = {
-	chat: {
-		defaultProvider: "local",
-		defaultModel: "model-a",
-		systemPrompt: "System",
-		temperature: 0.7,
-		thinkingLevel: "off" as const,
-		compaction: {
-			enabled: true,
-			triggerTokens: 1000,
-			keepRecentTokens: 100,
-		},
-	},
+const seedConfig = createWebVioloopConfig({
 	providers: {
 		local: {
 			baseUrl: "http://provider.test",
-			api: "openai-completions" as const,
+			api: "openai-completions",
 			models: [{ id: "model-a" }],
 		},
 	},
-};
+});
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -322,7 +305,7 @@ describe("local-only API facades", () => {
 			]),
 		});
 		await expect(
-			fetchTacticsStatus(created.conversation.id),
+			loadTacticsStatus(created.conversation.id),
 		).resolves.toMatchObject({
 			tactics: expect.any(Array),
 		});

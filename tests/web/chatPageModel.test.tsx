@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+﻿// @vitest-environment jsdom
 
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,14 +11,14 @@ import {
 import {
 	deleteStateDefinition,
 	deleteTactic,
-	fetchTacticsStatus,
+	loadTacticsStatus,
 	saveStateDefinition,
 	saveTactic,
 } from "../../src/web/entities/tactic";
 import {
-	editLastUserMessage,
-	sendChatMessage,
-} from "../../src/web/features/chat-session/api/chatApi";
+	editLocalLastUserMessage as editLastUserMessage,
+	sendLocalChatMessage as sendChatMessage,
+} from "../../src/web/features/chat-session/api/localChat";
 import {
 	loadConfig,
 	saveConfig,
@@ -35,7 +35,7 @@ vi.mock("../../src/web/entities/conversation", () => ({
 vi.mock("../../src/web/entities/tactic", () => ({
 	deleteStateDefinition: vi.fn(),
 	deleteTactic: vi.fn(),
-	fetchTacticsStatus: vi.fn(),
+	loadTacticsStatus: vi.fn(),
 	saveStateDefinition: vi.fn(),
 	saveTactic: vi.fn(),
 }));
@@ -45,9 +45,9 @@ vi.mock("../../src/web/features/config-settings/api/configApi", () => ({
 	saveConfig: vi.fn(),
 }));
 
-vi.mock("../../src/web/features/chat-session/api/chatApi", () => ({
-	editLastUserMessage: vi.fn(),
-	sendChatMessage: vi.fn(),
+vi.mock("../../src/web/features/chat-session/api/localChat", () => ({
+	editLocalLastUserMessage: vi.fn(),
+	sendLocalChatMessage: vi.fn(),
 }));
 
 function queueMock(
@@ -180,7 +180,7 @@ beforeEach(() => {
 	vi.mocked(getConversation).mockReset();
 	vi.mocked(listConversations).mockReset();
 	vi.mocked(renameConversation).mockReset();
-	vi.mocked(fetchTacticsStatus).mockReset();
+	vi.mocked(loadTacticsStatus).mockReset();
 	vi.mocked(saveTactic).mockReset();
 	vi.mocked(deleteTactic).mockReset();
 	vi.mocked(saveStateDefinition).mockReset();
@@ -205,7 +205,7 @@ describe("chat page composition model", () => {
 			clock,
 			timelineItems: [],
 		});
-		vi.mocked(fetchTacticsStatus).mockResolvedValue({
+		vi.mocked(loadTacticsStatus).mockResolvedValue({
 			tactics: [tactic],
 			stateDefinitions: [stateDefinition],
 			userState: [],
@@ -288,7 +288,7 @@ describe("chat page composition model", () => {
 			timelineItems,
 		});
 		queueMock(
-			vi.mocked(fetchTacticsStatus),
+			vi.mocked(loadTacticsStatus),
 			{
 				conversationId: "c1",
 				tactics: [tactic],
@@ -523,7 +523,7 @@ describe("chat page composition model", () => {
 			timelineItems: [],
 		});
 		queueMock(
-			vi.mocked(fetchTacticsStatus),
+			vi.mocked(loadTacticsStatus),
 			{
 				conversationId: "c1",
 				tactics: [noKeywordTactic],

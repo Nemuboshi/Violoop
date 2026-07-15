@@ -1,6 +1,7 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { Tabs } from "@base-ui/react/tabs";
 import type { StateDefinition } from "../../../entities/tactic";
+import type { ImportConflictStrategy } from "../../../shared/storage";
 import {
 	buttonClassName,
 	dialogBackdropClassName,
@@ -35,15 +36,10 @@ export type ConfigModalProps = {
 	onNewProvider(): void;
 	onNewTactic(): void;
 	onOpenChange(open: boolean): void;
-	importStrategy: import("../../../shared/storage/import").ImportConflictStrategy;
+	importStrategy: ImportConflictStrategy;
 	onExport?(): void;
-	onImportStrategy?(
-		strategy: import("../../../shared/storage/import").ImportConflictStrategy,
-	): void;
-	onImport?(
-		file: File,
-		strategy: import("../../../shared/storage/import").ImportConflictStrategy,
-	): void;
+	onImportStrategy?(strategy: ImportConflictStrategy): void;
+	onImport?(file: File, strategy: ImportConflictStrategy): void;
 	onSaveState(state: StateDefinition, originalId: string | null): void;
 	onSubmit(): void;
 	onUpdate(draft: ConfigSettingsFormDraft): void;

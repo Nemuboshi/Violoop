@@ -20,11 +20,16 @@ const importLocalExport = vi.fn(async () => ({
 	preserved: 0,
 }));
 
-vi.mock("../../src/web/shared/storage/exportActions", () => ({
-	downloadLocalExport: (...args: unknown[]) => downloadLocalExport(...args),
-	importLocalExport: (...args: unknown[]) => importLocalExport(...args),
-	confirmReplaceImportPreview: () => true,
-}));
+vi.mock("../../src/web/shared/storage", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("../../src/web/shared/storage")>();
+	return {
+		...actual,
+		downloadLocalExport: (...args: unknown[]) => downloadLocalExport(...args),
+		importLocalExport: (...args: unknown[]) => importLocalExport(...args),
+		confirmReplaceImportPreview: () => true,
+	};
+});
 
 const openConfigModal = vi.fn();
 const openNewChatModal = vi.fn();

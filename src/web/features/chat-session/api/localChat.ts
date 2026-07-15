@@ -4,16 +4,16 @@ import {
 	toPromptTimeline,
 } from "../../../../shared/domain/runtime";
 import type {
-	ChatResponse,
+	ChatTurnResult,
 	ConversationSummary,
 	SessionClock,
 	StoredCompaction,
 	TimelineItem,
 } from "../../../../shared/types";
 import { createClientId } from "../../../shared/lib";
-import { ensureLocalSeed } from "../../../shared/storage/localData";
 import {
 	appendLocalItemsAtomic,
+	ensureLocalSeed,
 	getConfig,
 	getConversationLocal,
 	getSessionClockLocal,
@@ -21,7 +21,7 @@ import {
 	listCompactionsLocal,
 	listTimelineItemsLocal,
 	pruneConversationAfterLocal,
-} from "../../../shared/storage/repository";
+} from "../../../shared/storage";
 import {
 	applyStatePatches,
 	assembleLocalChatPrompt,
@@ -48,7 +48,7 @@ type GenerateTurnOptions =
 export async function sendLocalChatMessage(input: {
 	conversationId: string;
 	message: string;
-}): Promise<ChatResponse> {
+}): Promise<ChatTurnResult> {
 	await ensureLocalSeed();
 	const conversation = await requireConversation(input.conversationId);
 	const userContent = input.message.trim().slice(0, 20000);
@@ -69,7 +69,7 @@ export async function sendLocalChatMessage(input: {
 export async function editLocalLastUserMessage(input: {
 	conversationId: string;
 	message: string;
-}): Promise<ChatResponse> {
+}): Promise<ChatTurnResult> {
 	await ensureLocalSeed();
 	const conversation = await requireConversation(input.conversationId);
 	const content = input.message.trim().slice(0, 20000);
@@ -106,7 +106,7 @@ async function generateTurn(
 	userMessage: string,
 	messageId: string,
 	options: GenerateTurnOptions,
-): Promise<ChatResponse> {
+): Promise<ChatTurnResult> {
 	const config = await getConfig();
 	if (!config) throw new Error("Local configuration is unavailable.");
 	const provider = resolveProvider(config);

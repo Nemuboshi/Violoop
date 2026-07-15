@@ -1,6 +1,6 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { Form } from "@base-ui/react/form";
-import type { ImportConflictStrategy } from "../../../shared/storage/import";
+import type { ImportConflictStrategy } from "../../../shared/storage";
 import {
 	Button,
 	buttonClassName,

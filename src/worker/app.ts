@@ -4,7 +4,6 @@ import { getProviderAdapter } from "../providers/index";
 import { testProvider } from "../providers/providerTest";
 import type {
 	ChatMessage,
-	ChatStreamEvent,
 	ChatUsage,
 	PromptBlock,
 	ProviderConfig,
@@ -291,5 +290,3 @@ export class WorkerRequestError extends Error {
 		super(message);
 	}
 }
-
-export type { ChatStreamEvent };

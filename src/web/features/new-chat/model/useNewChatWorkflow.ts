@@ -11,7 +11,7 @@ import {
 import type {
 	StateDefinition,
 	TacticOverview,
-	TacticsStatusResponse,
+	TacticsStatus,
 } from "../../../entities/tactic";
 
 export type NewChatDraft = SessionProfile &
@@ -27,7 +27,7 @@ type UseNewChatWorkflowOptions = {
 		allowedTacticIds: string[];
 		enabledStateIds: string[];
 	}) => Promise<ConversationPayload>;
-	refreshTacticLibraryStatus: () => Promise<TacticsStatusResponse | null>;
+	refreshTacticLibraryStatus: () => Promise<TacticsStatus | null>;
 	onConversationCreated: (payload: ConversationPayload) => void;
 	onRefreshConversations: () => Promise<unknown>;
 	onRefreshTactics: (conversationId: string) => Promise<unknown>;

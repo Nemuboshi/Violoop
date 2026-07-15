@@ -1,8 +1,8 @@
 import type {
 	StateDefinition,
 	Tactic,
-	TacticsMutationResponse,
-	TacticsStatusResponse,
+	TacticsLibrarySnapshot,
+	TacticsStatus,
 } from "../../../../shared/types";
 import {
 	getLocalTacticsStatus,
@@ -10,36 +10,36 @@ import {
 	removeLocalTactic,
 	saveLocalState,
 	saveLocalTactic,
-} from "../../../shared/storage/localData";
+} from "../../../shared/storage";
 
-export async function fetchTacticsStatus(conversationId?: string | null) {
+export async function loadTacticsStatus(conversationId?: string | null) {
 	return getLocalTacticsStatus(conversationId);
 }
 
 export async function saveTactic(input: {
 	tactic: Tactic;
 	originalId: string | null;
-}): Promise<TacticsMutationResponse> {
+}): Promise<TacticsLibrarySnapshot> {
 	return saveLocalTactic(input.tactic, input.originalId);
 }
 
 export async function deleteTactic(
 	tacticId: string,
-): Promise<TacticsMutationResponse> {
+): Promise<TacticsLibrarySnapshot> {
 	return removeLocalTactic(tacticId);
 }
 
 export async function saveStateDefinition(input: {
 	state: StateDefinition;
 	originalId: string | null;
-}): Promise<TacticsMutationResponse> {
+}): Promise<TacticsLibrarySnapshot> {
 	return saveLocalState(input.state, input.originalId);
 }
 
 export async function deleteStateDefinition(
 	stateId: string,
-): Promise<TacticsMutationResponse> {
+): Promise<TacticsLibrarySnapshot> {
 	return removeLocalState(stateId);
 }
 
-export type { TacticsStatusResponse };
+export type { TacticsStatus };

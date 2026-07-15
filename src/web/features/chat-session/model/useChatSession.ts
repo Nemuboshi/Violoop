@@ -12,7 +12,10 @@ import {
 	type SessionProfile,
 } from "../../../entities/session";
 import { createClientId } from "../../../shared/lib";
-import { editLastUserMessage, sendChatMessage } from "../api/chatApi";
+import {
+	editLocalLastUserMessage as editLastUserMessage,
+	sendLocalChatMessage as sendChatMessage,
+} from "../api/localChat";
 
 type ChatSessionStatus = "idle" | "thinking" | "error";
 

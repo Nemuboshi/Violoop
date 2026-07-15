@@ -8,7 +8,7 @@ import {
 	listLocalConversations,
 	removeLocalConversation,
 	renameLocalConversation,
-} from "../../../shared/storage/localData";
+} from "../../../shared/storage";
 
 export async function listConversations() {
 	return listLocalConversations();

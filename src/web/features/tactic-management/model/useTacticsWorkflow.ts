@@ -3,17 +3,18 @@ import type { SessionClock } from "../../../entities/session";
 import type {
 	StateDefinition,
 	TacticOverview,
-	TacticsStatusResponse,
+	TacticsStatus,
 } from "../../../entities/tactic";
-import { fetchTacticsStatus } from "../../../entities/tactic";
+import { loadTacticsStatus } from "../../../entities/tactic";
 
 type UseTacticsWorkflowOptions = {
 	onClockChange?: (clock: SessionClock) => void;
 };
 
 export function useTacticsWorkflow(options: UseTacticsWorkflowOptions = {}) {
-	const [tacticsStatus, setTacticsStatus] =
-		useState<TacticsStatusResponse | null>(null);
+	const [tacticsStatus, setTacticsStatus] = useState<TacticsStatus | null>(
+		null,
+	);
 	const [libraryTactics, setLibraryTactics] = useState<TacticOverview[]>([]);
 	const [stateDefinitions, setStateDefinitions] = useState<StateDefinition[]>(
 		[],
@@ -31,7 +32,7 @@ export function useTacticsWorkflow(options: UseTacticsWorkflowOptions = {}) {
 			return null;
 		}
 
-		const nextStatus = await fetchTacticsStatus(conversationId);
+		const nextStatus = await loadTacticsStatus(conversationId);
 		setTacticsStatus(nextStatus);
 		setStateDefinitions(nextStatus?.stateDefinitions ?? []);
 		setSelectedTacticIds(
@@ -47,7 +48,7 @@ export function useTacticsWorkflow(options: UseTacticsWorkflowOptions = {}) {
 	}
 
 	async function refreshLibrary() {
-		const nextStatus = await fetchTacticsStatus(null);
+		const nextStatus = await loadTacticsStatus(null);
 		const tactics = nextStatus?.tactics ?? [];
 		setStateDefinitions(nextStatus?.stateDefinitions ?? []);
 		setLibraryTactics(tactics);
@@ -55,7 +56,7 @@ export function useTacticsWorkflow(options: UseTacticsWorkflowOptions = {}) {
 	}
 
 	async function refreshLibraryStatus() {
-		const nextStatus = await fetchTacticsStatus(null);
+		const nextStatus = await loadTacticsStatus(null);
 		setStateDefinitions(nextStatus?.stateDefinitions ?? []);
 		setLibraryTactics(nextStatus?.tactics ?? []);
 		return nextStatus;

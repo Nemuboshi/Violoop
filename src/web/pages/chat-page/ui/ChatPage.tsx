@@ -10,9 +10,9 @@ import { TacticEditModal } from "../../../features/tactic-management";
 import {
 	confirmReplaceImportPreview,
 	downloadLocalExport,
+	type ImportConflictStrategy,
 	importLocalExport,
-} from "../../../shared/storage/exportActions";
-import type { ImportConflictStrategy } from "../../../shared/storage/import";
+} from "../../../shared/storage";
 import { buttonClassName, ScrollArea } from "../../../shared/ui";
 import { ChatComposer, ChatTimeline } from "../../../widgets/chat-panel";
 import { ConfigModal } from "../../../widgets/config-modal";

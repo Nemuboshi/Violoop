@@ -139,7 +139,7 @@ export type VioloopConfig = {
 	providers: Record<string, ProviderConfig>;
 };
 
-export type ConfigResponse = {
+export type AppConfigSnapshot = {
 	config: VioloopConfig;
 	provider: string;
 	providerName: string;
@@ -153,7 +153,7 @@ export type ConfigResponse = {
 	};
 };
 
-export type ConfigSaveResponse = {
+export type SavedConfig = {
 	config: VioloopConfig;
 };
 
@@ -217,7 +217,7 @@ export type StoredCompaction = {
 	model: string;
 };
 
-export type ChatResponse = {
+export type ChatTurnResult = {
 	requestId: string;
 	conversationId: string;
 	tacticIds: string[];
@@ -306,7 +306,7 @@ export type ConversationPayload = {
 	timelineItems: TimelineItem[];
 };
 
-export type TacticsStatusResponse = {
+export type TacticsStatus = {
 	conversationId?: string;
 	tactics: TacticOverview[];
 	stateDefinitions: StateDefinition[];
@@ -315,7 +315,7 @@ export type TacticsStatusResponse = {
 	recentRuns: TacticRunLogEntry[];
 };
 
-export type TacticsMutationResponse = {
+export type TacticsLibrarySnapshot = {
 	tactics: TacticOverview[];
 	stateDefinitions: StateDefinition[];
 };

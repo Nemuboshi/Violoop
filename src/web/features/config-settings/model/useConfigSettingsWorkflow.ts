@@ -1,5 +1,8 @@
 import { useState } from "react";
-import type { ConfigResponse, VioloopConfig } from "../../../../shared/types";
+import type {
+	AppConfigSnapshot,
+	VioloopConfig,
+} from "../../../../shared/types";
 import { loadConfig, saveConfig } from "../api/configApi";
 import { fromSettingsDraft, toSettingsDraft } from "./configDraft";
 
@@ -10,7 +13,7 @@ type UseConfigSettingsWorkflowOptions = {
 export function useConfigSettingsWorkflow(
 	options: UseConfigSettingsWorkflowOptions,
 ) {
-	const [config, setConfig] = useState<ConfigResponse | null>(null);
+	const [config, setConfig] = useState<AppConfigSnapshot | null>(null);
 	const [open, setOpen] = useState(false);
 	const [draft, setDraft] = useState<ReturnType<typeof toSettingsDraft> | null>(
 		null,

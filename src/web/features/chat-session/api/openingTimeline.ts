@@ -3,7 +3,7 @@ import type {
 	TimelineItem,
 } from "../../../../shared/types";
 import { createClientId } from "../../../shared/lib";
-import { getConfig } from "../../../shared/storage/repository";
+import { getConfig } from "../../../shared/storage";
 import { generateOpeningScenesLocal } from "./localRuntime";
 
 export async function createLocalOpeningTimeline(

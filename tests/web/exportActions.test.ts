@@ -3,38 +3,28 @@ import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { VioloopConfig } from "../../src/shared/types";
 import { createLocalConversation } from "../../src/web/features/chat-session/api/createLocalConversation";
+import {
+	confirmReplaceImportPreview,
+	downloadLocalExport,
+	importLocalExport,
+} from "../../src/web/shared/storage";
 import { getLocal, putLocal } from "../../src/web/shared/storage/database";
 import {
 	exportLocalData,
 	serializeExport,
 } from "../../src/web/shared/storage/export";
 import {
-	confirmReplaceImportPreview,
-	downloadLocalExport,
-	importLocalExport,
-} from "../../src/web/shared/storage/exportActions";
-import {
 	clearAllLocalData,
 	markLocalSeedComplete,
 	saveConfig,
 } from "../../src/web/shared/storage/repository";
+import { createVioloopConfig } from "../fixtures/config";
 
-const config: VioloopConfig = {
+const config: VioloopConfig = createVioloopConfig({
 	chat: {
-		defaultProvider: "local",
-		defaultModel: "model-a",
-		systemPrompt: "System",
 		compaction: { enabled: false, triggerTokens: 1000, keepRecentTokens: 100 },
 	},
-	providers: {
-		local: {
-			baseUrl: "https://provider.example/v1",
-			api: "openai-completions",
-			apiKey: "secret",
-			models: [{ id: "model-a" }],
-		},
-	},
-};
+});
 
 beforeEach(async () => {
 	await clearAllLocalData();

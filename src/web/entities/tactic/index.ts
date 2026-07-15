@@ -4,13 +4,13 @@ export type {
 	TacticEmotionKey,
 	TacticEmotionOperator,
 	TacticOverview,
-	TacticsStatusResponse,
+	TacticsStatus,
 	UserState,
 } from "../../../shared/types";
 export {
 	deleteStateDefinition,
 	deleteTactic,
-	fetchTacticsStatus,
+	loadTacticsStatus,
 	saveStateDefinition,
 	saveTactic,
 } from "./api/tacticsApi";

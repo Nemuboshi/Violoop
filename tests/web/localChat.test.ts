@@ -20,23 +20,13 @@ import {
 	saveConversationLocal,
 	saveStateDefinitionLocal,
 } from "../../src/web/shared/storage/repository";
+import { createVioloopConfig } from "../fixtures/config";
 
-const config: VioloopConfig = {
+const config: VioloopConfig = createVioloopConfig({
 	chat: {
-		defaultProvider: "local",
-		defaultModel: "model-a",
-		systemPrompt: "System",
 		compaction: { enabled: true, triggerTokens: 1, keepRecentTokens: 1 },
 	},
-	providers: {
-		local: {
-			baseUrl: "https://provider.example/v1",
-			api: "openai-completions",
-			apiKey: "secret",
-			models: [{ id: "model-a" }],
-		},
-	},
-};
+});
 
 beforeEach(async () => {
 	await clearAllLocalData();

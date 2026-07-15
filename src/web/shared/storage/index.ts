@@ -4,10 +4,40 @@ export {
 	serializeExport,
 	type VioloopExport,
 } from "./export";
-export { importLocalData } from "./import";
-export { ensureLocalSeed, hasIndexedDb } from "./localData";
 export {
+	confirmReplaceImportPreview,
+	downloadLocalExport,
+	importLocalExport,
+} from "./exportActions";
+export {
+	type ImportConflictStrategy,
+	type ImportResult,
+	importLocalData,
+} from "./import";
+export {
+	defaultStates,
+	ensureLocalSeed,
+	getLocalConfig,
+	getLocalConversationPayload,
+	getLocalTacticsStatus,
+	hasIndexedDb,
+	listLocalConversations,
+	normalizeTitle,
+	removeLocalConversation,
+	removeLocalState,
+	removeLocalTactic,
+	renameLocalConversation,
+	requiredStateIds,
+	saveLocalConfig,
+	saveLocalState,
+	saveLocalTactic,
+} from "./localData";
+export {
+	appendLocalItemsAtomic,
 	clearAllLocalData,
+	deleteConversationLocal,
+	deleteStateDefinitionLocal,
+	deleteTacticLocal,
 	getConfig,
 	getConversationLocal,
 	getSessionClockLocal,
@@ -19,6 +49,11 @@ export {
 	listTacticRunsLocal,
 	listTacticsLocal,
 	listTimelineItemsLocal,
+	listUsageLocal,
+	markLocalSeedComplete,
+	pruneConversationAfterLocal,
+	replaceConversationTimelineLocal,
+	saveCompactionLocal,
 	saveConfig,
 	saveConversationLocal,
 	saveSessionClockLocal,
@@ -26,5 +61,7 @@ export {
 	saveSessionUserStateLocal,
 	saveStateDefinitionLocal,
 	saveTacticLocal,
+	saveTacticRunLocal,
 	saveTimelineItemLocal,
+	saveUsageLocal,
 } from "./repository";

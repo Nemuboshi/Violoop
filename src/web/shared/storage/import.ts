@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { VioloopConfig } from "../../../shared/types";
 import { runLocalTransaction } from "./database";
 import type { VioloopExport } from "./export";
-import { importedConversationSchema, parseImport } from "./export";
+import { importedConversationSchema } from "./export";
 import {
 	getConfig,
 	listCompactionsLocal,
@@ -314,5 +314,3 @@ function validateCrossReferences(
 			);
 	}
 }
-
-export { parseImport };

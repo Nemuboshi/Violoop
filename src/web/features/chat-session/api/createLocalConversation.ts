@@ -8,20 +8,18 @@ import type {
 } from "../../../../shared/types";
 import { createClientId } from "../../../shared/lib";
 import {
+	appendLocalItemsAtomic,
 	defaultStates,
+	deleteConversationLocal,
 	ensureLocalSeed,
+	listTacticsLocal,
 	normalizeTitle,
 	requiredStateIds,
-} from "../../../shared/storage/localData";
-import {
-	appendLocalItemsAtomic,
-	deleteConversationLocal,
-	listTacticsLocal,
 	saveConversationLocal,
 	saveSessionClockLocal,
 	saveSessionTacticIdsLocal,
 	saveSessionUserStateLocal,
-} from "../../../shared/storage/repository";
+} from "../../../shared/storage";
 import { createLocalOpeningTimeline } from "./openingTimeline";
 
 const defaultProfile: SessionProfile = {
