@@ -19,6 +19,7 @@ export function ConfigSettingsTab(props: {
 	activeModelLabel: string;
 	draft: ConfigSettingsFormDraft | null;
 	error: string;
+	statusMessage?: string;
 	modelOptions: ConfigSelectOption[];
 	thinkingLevelOptions: ConfigSelectOption[];
 	saving: boolean;
@@ -165,6 +166,12 @@ export function ConfigSettingsTab(props: {
 						Stored in this browser. Export regularly for backup.
 					</span>
 				</div>
+
+				{props.statusMessage ? (
+					<p className="border-l-4 border-line px-3 py-2 text-sm text-ink">
+						{props.statusMessage}
+					</p>
+				) : null}
 
 				{props.error ? (
 					<p className="border-l-4 border-danger bg-danger-surface px-3 py-2 text-sm text-danger">

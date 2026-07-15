@@ -39,7 +39,7 @@ export function ChatComposer(props: ChatComposerProps) {
 				type="submit"
 				disabled={!props.canSend}
 			>
-				{props.status === "thinking" ? "Streaming" : "Send"}
+				{props.status === "thinking" ? "Waiting…" : "Send"}
 			</Button>
 		</Form>
 	);

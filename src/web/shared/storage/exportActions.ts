@@ -1,4 +1,4 @@
-import { putLocal } from "./database";
+import { deleteLocal, listLocal, putLocal } from "./database";
 import { exportLocalData, parseImport, serializeExport } from "./export";
 import { type ImportConflictStrategy, importLocalData } from "./import";
 
@@ -12,6 +12,16 @@ export async function downloadLocalExport() {
 	anchor.click();
 	URL.revokeObjectURL(url);
 	return data;
+}
+
+export function confirmReplaceImportPreview(preview: {
+	conversations: number;
+	tactics: number;
+	stateDefinitions: number;
+}) {
+	return window.confirm(
+		`Replace local data?\nConversations: ${preview.conversations}\nTactics: ${preview.tactics}\nStates: ${preview.stateDefinitions}`,
+	);
 }
 
 export async function importLocalExport(
@@ -36,11 +46,17 @@ export async function importLocalExport(
 	if (options.confirm && !(await options.confirm(preview))) {
 		throw new Error("Import cancelled.");
 	}
-	// Keep an explicit snapshot in local metadata before replacing valid data.
+	// Keep a single latest snapshot in local metadata before replacing valid data.
 	if (strategy === "replace") {
 		const snapshot = await exportLocalData();
+		const metaEntries = await listLocal<{ id: string }>("meta");
+		for (const entry of metaEntries) {
+			if (typeof entry.id === "string" && entry.id.startsWith("backup:")) {
+				await deleteLocal("meta", entry.id);
+			}
+		}
 		await putLocal("meta", {
-			id: `backup:${new Date().toISOString()}`,
+			id: "backup:latest",
 			exportedAt: snapshot.exportedAt,
 			data: snapshot,
 		});

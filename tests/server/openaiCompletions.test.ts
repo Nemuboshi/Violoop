@@ -425,4 +425,51 @@ describe("openai completions provider adapter", () => {
 		);
 		expect(requests[0].body.thinking).toBeUndefined();
 	});
+
+	it("times out aborted provider requests and rejects oversized streams", async () => {
+		vi.useFakeTimers();
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				(_url: string, init?: RequestInit) =>
+					new Promise((_resolve, reject) => {
+						init?.signal?.addEventListener("abort", () => {
+							reject(new DOMException("Aborted", "AbortError"));
+						});
+					}),
+			),
+		);
+		const pending = expect(collect(options())).rejects.toMatchObject({
+			status: 504,
+			message: "Provider request timed out.",
+		});
+		await vi.advanceTimersByTimeAsync(120_000);
+		await pending;
+		vi.useRealTimers();
+
+		const oversized = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new Uint8Array(5 * 1024 * 1024));
+				controller.enqueue(new Uint8Array(4 * 1024 * 1024));
+				controller.close();
+			},
+		});
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response(oversized, { status: 200 })),
+		);
+		await expect(collect(options())).rejects.toMatchObject({
+			status: 502,
+			message: "Provider response is too large.",
+		});
+	});
+});
+
+describe("getProviderAdapter", () => {
+	it("rejects unsupported provider APIs", async () => {
+		const { getProviderAdapter } = await import("../../src/server/providers");
+		expect(() => getProviderAdapter("missing" as never)).toThrow(
+			'Provider API "missing" is not supported.',
+		);
+	});
 });

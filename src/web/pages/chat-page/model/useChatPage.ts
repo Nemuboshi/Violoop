@@ -80,8 +80,16 @@ export function useChatPage() {
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: initial app load should run once.
 	useEffect(() => {
-		void config.refreshConfig();
-		void conversations.refreshConversations();
+		void (async () => {
+			await config.refreshConfig();
+			const list = await conversations.refreshConversations();
+			const storedId = localStorage.getItem("violoop.activeConversationId");
+			if (storedId && list.some((item) => item.id === storedId)) {
+				await chatSession.restoreConversation(storedId, {
+					onRefreshTactics: refreshSessionTactics,
+				});
+			}
+		})();
 	}, []);
 
 	function sendMessage() {

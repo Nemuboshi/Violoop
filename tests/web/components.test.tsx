@@ -11,6 +11,14 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "../../src/web/app/App";
 import {
+	createConversation,
+	deleteConversation,
+	fetchConversation,
+	fetchConversations,
+} from "../../src/web/entities/conversation";
+import { fetchTacticsStatus } from "../../src/web/entities/tactic";
+import { fetchConfig } from "../../src/web/features/config-settings/api/configApi";
+import {
 	DeleteConversationModal,
 	RenameConversationModal,
 } from "../../src/web/features/conversation-management";
@@ -38,6 +46,27 @@ import {
 import { ChatComposer, ChatTimeline } from "../../src/web/widgets/chat-panel";
 import { ConfigModal } from "../../src/web/widgets/config-modal";
 import { SidebarContent } from "../../src/web/widgets/sidebar";
+
+vi.mock("../../src/web/entities/conversation", () => ({
+	createConversation: vi.fn(),
+	deleteConversation: vi.fn(),
+	fetchConversation: vi.fn(),
+	fetchConversations: vi.fn(),
+	renameConversation: vi.fn(),
+}));
+
+vi.mock("../../src/web/entities/tactic", () => ({
+	deleteStateDefinition: vi.fn(),
+	deleteTactic: vi.fn(),
+	fetchTacticsStatus: vi.fn(),
+	saveStateDefinition: vi.fn(),
+	saveTactic: vi.fn(),
+}));
+
+vi.mock("../../src/web/features/config-settings/api/configApi", () => ({
+	fetchConfig: vi.fn(),
+	saveConfig: vi.fn(),
+}));
 
 const stateDefinitions = [
 	{
@@ -1345,77 +1374,48 @@ describe("web components", () => {
 				},
 			},
 		};
-		const fetchMock = vi.fn(
-			async (input: RequestInfo | URL, init?: RequestInit) => {
-				const url = String(input);
-				if (url === "/api/config") {
-					return new Response(
-						JSON.stringify({
-							config: appConfig,
-							provider: "local",
-							providerName: "Local",
-							baseUrl: "http://provider.test",
-							api: "openai-completions",
-							model: "model-a",
-							cache: { systemPrompt: true, usageInStreaming: true },
-						}),
-					);
-				}
-				if (url === "/api/conversations" && init?.method === "POST") {
-					return new Response(
-						JSON.stringify({
-							conversation,
-							clock,
-							timelineItems: [],
-						}),
-					);
-				}
-				if (url === "/api/conversations") {
-					return new Response(
-						JSON.stringify({ conversations: [conversation] }),
-					);
-				}
-				if (url === "/api/conversations/c1/messages") {
-					return new Response(
-						JSON.stringify({
-							conversation,
-							clock,
-							timelineItems: [
-								{
-									id: "m1",
-									conversationId: "c1",
-									kind: "chat",
-									role: "assistant",
-									speakerName: "Ava",
-									content: "Welcome",
-									promptVisibility: "visible",
-									createdAt: "2026-01-01T00:00:00.000Z",
-								},
-							],
-						}),
-					);
-				}
-				if (url === "/api/conversations/c1" && init?.method === "DELETE") {
-					return new Response(JSON.stringify({ conversations: [] }));
-				}
-				if (url.startsWith("/api/tactics")) {
-					return new Response(
-						JSON.stringify({
-							conversationId: "c1",
-							tactics: [tactic],
-							stateDefinitions,
-							userState: [],
-							clock,
-							recentRuns: [],
-						}),
-					);
-				}
-				return new Response(JSON.stringify({ error: "Unexpected request" }), {
-					status: 500,
-				});
-			},
-		);
-		vi.stubGlobal("fetch", fetchMock);
+		const tacticsPayload = {
+			conversationId: "c1",
+			tactics: [tactic],
+			stateDefinitions,
+			userState: [],
+			clock,
+			recentRuns: [],
+		};
+
+		vi.mocked(fetchConfig).mockResolvedValue({
+			config: appConfig,
+			provider: "local",
+			providerName: "Local",
+			baseUrl: "http://provider.test",
+			api: "openai-completions",
+			model: "model-a",
+			cache: { systemPrompt: true, usageInStreaming: true },
+		});
+		vi.mocked(fetchConversations).mockResolvedValue([conversation]);
+		vi.mocked(fetchConversation).mockResolvedValue({
+			conversation,
+			clock,
+			timelineItems: [
+				{
+					id: "m1",
+					conversationId: "c1",
+					kind: "chat",
+					role: "assistant",
+					speakerName: "Ava",
+					content: "Welcome",
+					promptVisibility: "visible",
+					createdAt: "2026-01-01T00:00:00.000Z",
+				},
+			],
+		});
+		vi.mocked(createConversation).mockResolvedValue({
+			conversation,
+			clock,
+			timelineItems: [],
+		});
+		vi.mocked(deleteConversation).mockResolvedValue([]);
+		vi.mocked(fetchTacticsStatus).mockResolvedValue(tacticsPayload);
 
 		render(<App />);
 
@@ -1451,6 +1451,6 @@ describe("web components", () => {
 
 		await user.click(screen.getByRole("button", { name: "Delete Morning" }));
 		await user.click(await screen.findByRole("button", { name: "Delete" }));
-		expect(fetchMock).toHaveBeenCalled();
+		expect(deleteConversation).toHaveBeenCalled();
 	});
 });

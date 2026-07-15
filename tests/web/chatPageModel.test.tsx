@@ -1,26 +1,73 @@
 // @vitest-environment jsdom
 
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	createConversation,
+	deleteConversation,
+	fetchConversation,
+	fetchConversations,
+	renameConversation,
+} from "../../src/web/entities/conversation";
+import {
+	deleteStateDefinition,
+	deleteTactic,
+	fetchTacticsStatus,
+	saveStateDefinition,
+	saveTactic,
+} from "../../src/web/entities/tactic";
+import {
+	editLastUserMessage,
+	sendChatMessage,
+} from "../../src/web/features/chat-session/api/chatApi";
+import {
+	fetchConfig,
+	saveConfig,
+} from "../../src/web/features/config-settings/api/configApi";
 import { useChatPage } from "../../src/web/pages/chat-page/model/useChatPage";
 
-function jsonResponse(payload: unknown, init: ResponseInit = {}) {
-	return new Response(JSON.stringify(payload), {
-		status: init.status ?? 200,
-		headers: { "Content-Type": "application/json" },
-	});
-}
+vi.mock("../../src/web/entities/conversation", () => ({
+	createConversation: vi.fn(),
+	deleteConversation: vi.fn(),
+	fetchConversation: vi.fn(),
+	fetchConversations: vi.fn(),
+	renameConversation: vi.fn(),
+}));
 
-function mockFetch(...responses: Array<Response | (() => Response)>) {
-	const fetchMock = vi.fn(async () => {
-		const next = responses.shift();
-		if (!next) {
-			throw new Error("Unexpected fetch call");
+vi.mock("../../src/web/entities/tactic", () => ({
+	deleteStateDefinition: vi.fn(),
+	deleteTactic: vi.fn(),
+	fetchTacticsStatus: vi.fn(),
+	saveStateDefinition: vi.fn(),
+	saveTactic: vi.fn(),
+}));
+
+vi.mock("../../src/web/features/config-settings/api/configApi", () => ({
+	fetchConfig: vi.fn(),
+	saveConfig: vi.fn(),
+}));
+
+vi.mock("../../src/web/features/chat-session/api/chatApi", () => ({
+	editLastUserMessage: vi.fn(),
+	sendChatMessage: vi.fn(),
+}));
+
+function queueMock(
+	fn: ReturnType<typeof vi.fn>,
+	...responses: Array<unknown | (() => unknown)>
+) {
+	const queue = [...responses];
+	fn.mockImplementation(async () => {
+		const next = queue.shift();
+		if (next === undefined) {
+			throw new Error("Unexpected API call");
 		}
-		return typeof next === "function" ? next() : next;
+		if (typeof next === "function") {
+			return (next as () => unknown)();
+		}
+		return next;
 	});
-	vi.stubGlobal("fetch", fetchMock);
-	return fetchMock;
+	return fn;
 }
 
 const profile = {
@@ -129,15 +176,56 @@ const timelineItems = [
 	},
 ];
 
+beforeEach(() => {
+	localStorage.clear();
+	vi.mocked(createConversation).mockReset();
+	vi.mocked(deleteConversation).mockReset();
+	vi.mocked(fetchConversation).mockReset();
+	vi.mocked(fetchConversations).mockReset();
+	vi.mocked(renameConversation).mockReset();
+	vi.mocked(fetchTacticsStatus).mockReset();
+	vi.mocked(saveTactic).mockReset();
+	vi.mocked(deleteTactic).mockReset();
+	vi.mocked(saveStateDefinition).mockReset();
+	vi.mocked(deleteStateDefinition).mockReset();
+	vi.mocked(fetchConfig).mockReset();
+	vi.mocked(saveConfig).mockReset();
+	vi.mocked(sendChatMessage).mockReset();
+	vi.mocked(editLastUserMessage).mockReset();
+});
+
 afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
 describe("chat page composition model", () => {
+	it("restores the last active conversation from localStorage on load", async () => {
+		localStorage.setItem("violoop.activeConversationId", "c1");
+		vi.mocked(fetchConfig).mockResolvedValue(configResponse as never);
+		vi.mocked(fetchConversations).mockResolvedValue([conversation]);
+		vi.mocked(fetchConversation).mockResolvedValue({
+			conversation,
+			clock,
+			timelineItems: [],
+		});
+		vi.mocked(fetchTacticsStatus).mockResolvedValue({
+			tactics: [tactic],
+			stateDefinitions: [stateDefinition],
+			userState: [],
+			allowedTacticIds: ["calm"],
+			recentRuns: [],
+		} as never);
+		const { result } = renderHook(() => useChatPage());
+		await waitFor(() => {
+			expect(result.current.chatSession.activeConversationId).toBe("c1");
+		});
+		expect(fetchConversation).toHaveBeenCalledWith("c1");
+	});
+
 	it("keeps selected-session panels stable while global config is still loading", () => {
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(() => new Promise<Response>(() => {})),
+		vi.mocked(fetchConfig).mockImplementation(() => new Promise(() => {}));
+		vi.mocked(fetchConversations).mockImplementation(
+			() => new Promise(() => {}),
 		);
 		const { result } = renderHook(() => useChatPage());
 
@@ -195,15 +283,21 @@ describe("chat page composition model", () => {
 	});
 
 	it("maps loaded app state into widget views and delegates page actions", async () => {
-		const fetchMock = mockFetch(
-			jsonResponse(configResponse),
-			jsonResponse({ conversations: [conversation] }),
-			jsonResponse({
-				conversation,
-				clock,
-				timelineItems,
-			}),
-			jsonResponse({
+		queueMock(vi.mocked(fetchConfig), configResponse);
+		queueMock(
+			vi.mocked(fetchConversations),
+			[conversation],
+			[conversation],
+			[],
+		);
+		queueMock(vi.mocked(fetchConversation), {
+			conversation,
+			clock,
+			timelineItems,
+		});
+		queueMock(
+			vi.mocked(fetchTacticsStatus),
+			{
 				conversationId: "c1",
 				tactics: [tactic],
 				stateDefinitions: [stateDefinition],
@@ -218,34 +312,33 @@ describe("chat page composition model", () => {
 				],
 				clock,
 				recentRuns: [],
-			}),
-			jsonResponse({
+			},
+			{
 				tactics: [tactic],
 				stateDefinitions: [stateDefinition],
 				userState: [],
 				clock: null,
 				recentRuns: [],
-			}),
-			jsonResponse({
-				requestId: "r1",
-				conversationId: "c1",
-				tacticIds: ["ghost"],
-				usage: { promptTokens: 5 },
-				clock,
-				timelineItems,
-				createdItems: [],
-			}),
-			jsonResponse({ conversations: [conversation] }),
-			jsonResponse({
+			},
+			{
 				conversationId: "c1",
 				tactics: [tactic],
 				stateDefinitions: [stateDefinition],
 				userState: [],
 				clock,
 				recentRuns: [],
-			}),
-			jsonResponse({ conversations: [] }),
+			},
 		);
+		queueMock(vi.mocked(sendChatMessage), {
+			requestId: "r1",
+			conversationId: "c1",
+			tacticIds: ["ghost"],
+			usage: { promptTokens: 5 },
+			clock,
+			timelineItems,
+			createdItems: [],
+		});
+		queueMock(vi.mocked(deleteConversation), []);
 
 		const { result } = renderHook(() => useChatPage());
 
@@ -412,7 +505,7 @@ describe("chat page composition model", () => {
 			expect(result.current.chatSession.activeConversationId).toBeNull();
 		});
 		expect(result.current.chatSession.activeConversationId).toBeNull();
-		expect(fetchMock).toHaveBeenCalled();
+		expect(deleteConversation).toHaveBeenCalled();
 	});
 
 	it("uses display fallbacks for sparse provider and tactic data", async () => {
@@ -430,26 +523,32 @@ describe("chat page composition model", () => {
 			},
 		};
 		const noKeywordTactic = { ...tactic, keywords: [] };
-		mockFetch(
-			jsonResponse(sparseConfigResponse),
-			jsonResponse({ conversations: [conversation] }),
-			jsonResponse({ conversation, clock, timelineItems: [] }),
-			jsonResponse({
+		queueMock(vi.mocked(fetchConfig), sparseConfigResponse);
+		queueMock(vi.mocked(fetchConversations), [conversation]);
+		queueMock(vi.mocked(fetchConversation), {
+			conversation,
+			clock,
+			timelineItems: [],
+		});
+		queueMock(
+			vi.mocked(fetchTacticsStatus),
+			{
 				conversationId: "c1",
 				tactics: [noKeywordTactic],
 				stateDefinitions: [stateDefinition],
 				userState: [],
 				clock: null,
 				recentRuns: [],
-			}),
-			jsonResponse({
+			},
+			{
 				tactics: [noKeywordTactic],
 				stateDefinitions: [stateDefinition],
 				userState: [],
 				clock: null,
 				recentRuns: [],
-			}),
+			},
 		);
+
 		const { result } = renderHook(() => useChatPage());
 
 		await waitFor(() => {

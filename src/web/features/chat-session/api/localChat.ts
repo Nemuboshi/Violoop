@@ -6,6 +6,8 @@ import {
 import type {
 	ChatResponse,
 	ConversationSummary,
+	SessionClock,
+	StoredCompaction,
 	TimelineItem,
 } from "../../../../shared/types";
 import { createClientId } from "../../../shared/lib";
@@ -20,9 +22,6 @@ import {
 	listTimelineItemsLocal,
 	pruneConversationAfterLocal,
 } from "../../../shared/storage/repository";
-
-const compactionJobs = new Set<string>();
-
 import {
 	applyStatePatches,
 	assembleLocalChatPrompt,
@@ -32,6 +31,19 @@ import {
 	runDailyStateUpdateLocal,
 	selectLocalTactics,
 } from "./localRuntime";
+
+type GenerateTurnOptions =
+	| {
+			mode: "send";
+			pendingUserItem: TimelineItem;
+	  }
+	| {
+			mode: "edit";
+			retained: TimelineItem[];
+			restoredClock?: SessionClock;
+			nextConversation: ConversationSummary;
+			afterCreatedAt: string;
+	  };
 
 export async function sendLocalChatMessage(input: {
 	conversationId: string;
@@ -48,8 +60,10 @@ export async function sendLocalChatMessage(input: {
 		content: userContent,
 		promptVisibility: "visible",
 	});
-	await appendLocalItemsAtomic(conversation, [userItem]);
-	return generateTurn(conversation, userContent, userItem.id);
+	return generateTurn(conversation, userContent, userItem.id, {
+		mode: "send",
+		pendingUserItem: userItem,
+	});
 }
 
 export async function editLocalLastUserMessage(input: {
@@ -78,26 +92,30 @@ export async function editLocalLastUserMessage(input: {
 	const restoredClock = conversation.capabilities.dayProgression
 		? restoreClockFromTimeline(conversation.id, retained)
 		: undefined;
-	await pruneConversationAfterLocal(
-		nextConversation,
+	return generateTurn(nextConversation, content, target.id, {
+		mode: "edit",
 		retained,
-		target.createdAt,
 		restoredClock,
-	);
-	return generateTurn(nextConversation, content, target.id);
+		nextConversation,
+		afterCreatedAt: target.createdAt,
+	});
 }
 
 async function generateTurn(
 	conversation: ConversationSummary,
 	userMessage: string,
 	messageId: string,
+	options: GenerateTurnOptions,
 ): Promise<ChatResponse> {
 	const config = await getConfig();
 	if (!config) throw new Error("Local configuration is unavailable.");
 	const provider = resolveProvider(config);
-	const clock = conversation.capabilities.dayProgression
-		? ((await getSessionClockLocal(conversation.id)) ?? null)
-		: null;
+	const clock =
+		options.mode === "edit"
+			? (options.restoredClock ?? null)
+			: conversation.capabilities.dayProgression
+				? ((await getSessionClockLocal(conversation.id)) ?? null)
+				: null;
 	const tacticSelection = conversation.capabilities.tactics
 		? await selectLocalTactics({
 				conversationId: conversation.id,
@@ -106,10 +124,16 @@ async function generateTurn(
 				persist: false,
 			})
 		: { loaded: [], decisions: [], states: [], runs: [] };
-	const timeline = await listTimelineItemsLocal(conversation.id);
+	const baseTimeline =
+		options.mode === "edit"
+			? options.retained
+			: [
+					...(await listTimelineItemsLocal(conversation.id)),
+					options.pendingUserItem,
+				];
 	const summaries = await listCompactionsLocal(conversation.id);
 	const summary = summaries.at(-1);
-	const promptTimeline = toPromptTimeline(timeline, summary);
+	const promptTimeline = toPromptTimeline(baseTimeline, summary);
 	const prompt = assembleLocalChatPrompt({
 		globalSystemPrompt: config.chat.systemPrompt,
 		profile: conversation.profile,
@@ -129,7 +153,6 @@ async function generateTurn(
 	});
 	const parsed = parseStructuredChatResult(response.text);
 	const assistantItems = (Array.isArray(parsed.messages) ? parsed.messages : [])
-		.filter((message) => !message.kind || message.kind === "chat")
 		.map((message) => sanitizeMessage(message.content))
 		.filter(Boolean)
 		.slice(0, 5);
@@ -154,20 +177,22 @@ async function generateTurn(
 		clock ?? undefined,
 	);
 	createdItems.push(...runtimeResult.items);
-	let compaction: Awaited<ReturnType<typeof compactLocalConversation>>;
-	if (!compactionJobs.has(conversation.id)) {
-		compactionJobs.add(conversation.id);
-		try {
-			compaction = await compactLocalConversation({
-				conversation,
-				config,
-				timeline: [...timeline, ...createdItems],
-				summary,
-			});
-		} finally {
-			compactionJobs.delete(conversation.id);
-		}
+
+	let compaction: StoredCompaction | undefined;
+	try {
+		compaction = await compactLocalConversation({
+			conversation,
+			config,
+			timeline: [...baseTimeline, ...createdItems],
+			summary,
+		});
+	} catch (error) {
+		console.warn(
+			`[compaction] conversation=${conversation.id} skipped:`,
+			error instanceof Error ? error.message : error,
+		);
 	}
+
 	let finalClock = runtimeResult.clock;
 	let finalStates = runtimeResult.states;
 	if (
@@ -175,40 +200,75 @@ async function generateTurn(
 		conversation.capabilities.sessionState &&
 		runtimeResult.clock
 	) {
-		const stateResult = await runDailyStateUpdateLocal({
-			conversation,
-			config,
-			clock: runtimeResult.clock,
-			states: runtimeResult.states,
-			timeline: [...timeline, ...createdItems],
-			persist: false,
-		});
-		if (stateResult.states) {
-			const stateItem = makeItem(conversation, {
-				kind: "state_update",
-				role: "system",
-				speakerName: "System",
-				content:
-					stateResult.note || `Day ${runtimeResult.clock.day} state updated.`,
-				promptVisibility: "hidden",
-				metadata: {
-					day: runtimeResult.clock.day,
-					patches: stateResult.applied,
-				},
+		try {
+			const stateResult = await runDailyStateUpdateLocal({
+				conversation,
+				config,
+				clock: runtimeResult.clock,
+				states: runtimeResult.states,
+				timeline: [...baseTimeline, ...createdItems],
+				persist: false,
 			});
-			createdItems.push(stateItem);
-			finalClock = stateResult.clock;
-			finalStates = stateResult.states;
+			if (stateResult.states) {
+				const stateItem = makeItem(conversation, {
+					kind: "state_update",
+					role: "system",
+					speakerName: "System",
+					content:
+						stateResult.note || `Day ${runtimeResult.clock.day} state updated.`,
+					promptVisibility: "hidden",
+					metadata: {
+						day: runtimeResult.clock.day,
+						patches: stateResult.applied,
+					},
+				});
+				createdItems.push(stateItem);
+				finalClock = stateResult.clock;
+				finalStates = stateResult.states;
+			}
+		} catch (error) {
+			console.warn(
+				`[daily-state] conversation=${conversation.id} skipped:`,
+				error instanceof Error ? error.message : error,
+			);
 		}
 	}
+
 	const requestId = createClientId("request");
-	await appendLocalItemsAtomic(conversation, createdItems, compaction, {
-		clock: finalClock ?? undefined,
-		userState: finalStates,
-		requestId,
-		usage: response.usage,
-		tacticRuns: tacticSelection.runs,
-	});
+	if (options.mode === "edit") {
+		await pruneConversationAfterLocal(
+			options.nextConversation,
+			options.retained,
+			options.afterCreatedAt,
+			options.restoredClock,
+		);
+		await appendLocalItemsAtomic(
+			options.nextConversation,
+			createdItems,
+			compaction,
+			{
+				clock: finalClock ?? undefined,
+				userState: finalStates,
+				requestId,
+				usage: response.usage,
+				tacticRuns: tacticSelection.runs,
+			},
+		);
+	} else {
+		await appendLocalItemsAtomic(
+			conversation,
+			[options.pendingUserItem, ...createdItems],
+			compaction,
+			{
+				clock: finalClock ?? undefined,
+				userState: finalStates,
+				requestId,
+				usage: response.usage,
+				tacticRuns: tacticSelection.runs,
+			},
+		);
+	}
+
 	return {
 		requestId,
 		conversationId: conversation.id,
@@ -216,7 +276,10 @@ async function generateTurn(
 		usage: response.usage,
 		clock: (await getSessionClockLocal(conversation.id)) ?? null,
 		timelineItems: await listTimelineItemsLocal(conversation.id),
-		createdItems,
+		createdItems:
+			options.mode === "send"
+				? [options.pendingUserItem, ...createdItems]
+				: createdItems,
 	};
 }
 
@@ -227,7 +290,7 @@ async function applyRuntimeActions(
 ) {
 	const items: TimelineItem[] = [];
 	const states = conversation.capabilities.sessionState
-		? ((await getSessionUserStateLocal(conversation.id)) ?? undefined)
+		? await getSessionUserStateLocal(conversation.id)
 		: undefined;
 	const allowedTools = new Set(
 		[
@@ -236,8 +299,8 @@ async function applyRuntimeActions(
 			conversation.capabilities.sessionState ? "update_session_state" : "",
 		].filter(Boolean),
 	);
-	const list = (Array.isArray(actions) ? actions : []).filter((action) =>
-		allowedTools.has(action.tool ?? ""),
+	const list = (Array.isArray(actions) ? actions : []).filter(
+		(action) => !!action.tool && allowedTools.has(action.tool),
 	);
 	const advance = list.find((action) => action.tool === "advance_day");
 	let nextClock = clock;
@@ -281,7 +344,7 @@ async function applyRuntimeActions(
 					speakerName: "Scene",
 					content: scene,
 					promptVisibility: "context",
-					metadata: nextClock ? { day: nextClock.day } : undefined,
+					metadata: nextClock == null ? undefined : { day: nextClock.day },
 				}),
 			);
 	}

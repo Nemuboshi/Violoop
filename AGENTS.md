@@ -4,7 +4,7 @@ This file defines project rules for AI coding agents working on Violoop. Follow 
 
 ## Project Intent
 
-Violoop is a chatbot application with a Fastify backend and a React frontend. The product direction is an agentic chat experience with configurable providers, persistent conversations, session-scoped profiles, and a tactics system that can influence responses without bloating every prompt.
+Violoop is a local-first chatbot: React frontend, Hono Worker as a same-origin provider proxy, and IndexedDB for conversations/config/tactics. The product direction is an agentic chat experience with configurable providers, persistent conversations, session-scoped profiles, and a tactics system that can influence responses without bloating every prompt.
 
 ## Working Style
 
@@ -20,7 +20,7 @@ Violoop is a chatbot application with a Fastify backend and a React frontend. Th
 
 - Package manager: `pnpm`.
 - Frontend build: Vite.
-- Backend: Fastify.
+- API proxy: Hono on Cloudflare Workers (local via Wrangler).
 - Formatting and linting: Biome.
 - Tests: Vitest with V8 coverage.
 - Runtime validation and persisted data schemas should use Zod where appropriate.
@@ -33,7 +33,7 @@ pnpm build
 pnpm test:coverage
 pnpm biome check .
 pnpm dev
-pnpm dev:api
+pnpm dev:worker
 pnpm dev:web
 ```
 
@@ -52,14 +52,22 @@ The project uses these main source areas:
 
 ```text
 src/
-  server/
+  worker/
+  server/providers/   # provider adapters still used by Worker
   shared/
   web/
 ```
 
-- `src/server`: Fastify server, routes, services, storage, provider adapters, runtime logic.
-- `src/shared`: cross-runtime contracts and schemas used by server and web.
-- `src/web`: React frontend organized with Feature-Sliced Design.
+- `src/worker`: Hono Worker — health, chat proxy, provider test, SSRF guards, SPA assets fallback.
+- `src/server/providers` (+ `services/providerTest`): OpenAI-compatible adapter shared by Worker (not a Fastify app).
+- `src/shared`: cross-runtime contracts and domain logic used by Worker and web.
+- `src/web`: React frontend organized with Feature-Sliced Design; IndexedDB holds app data.
+
+### Worker Rules
+
+- Keep Worker stateless: no conversation persistence, no IndexedDB, no Node `fs`.
+- Deployment-level settings such as CORS origins and provider host allowlists belong in environment/bindings, not user-facing app config.
+- Provider-specific request shaping belongs in provider adapters, not route handlers.
 
 ### Web FSD Rules
 
@@ -93,19 +101,11 @@ Boundary rules:
 - `src/web/shared` is for UI primitives, frontend API client helpers, and generic frontend utilities. It must not become a dumping ground for business types.
 - Cross-runtime business contracts belong in `src/shared`, not `src/web/shared`.
 
-### Server Rules
-
-- Use Fastify routes and services rather than growing a monolithic server entry file.
-- Deployment-level settings such as ports, CORS origins, host, and data paths belong in environment configuration, not user-facing app config.
-- Resolve process-level paths once during server startup or in a central server config module. Avoid scattering path resolution across unrelated files.
-- Provider-specific behavior belongs in provider adapters or provider service code, not in route handlers.
-
 ## Data and Configuration
 
-- User-facing chat configuration and provider settings are application data, not deployment environment.
-- Deployment/runtime variables belong in `.env`.
-- Persisted application data currently favors JSON/JSONL plus Zod validation over SQLite unless there is a clear query/indexing need.
-- Seed data should be handled by explicit seed scripts, not hidden default insertion in runtime code.
+- User-facing chat configuration and provider settings are application data stored in IndexedDB.
+- Deployment/runtime variables belong in `.env` / Wrangler bindings.
+- Browser seed defaults come from `public/default-data/` via `ensureLocalSeed`.
 - When changing persisted JSON shapes, consider manual migration of existing data. Do not silently preserve old formats unless compatibility is explicitly requested.
 
 ## Provider System

@@ -1,6 +1,6 @@
 # Violoop Cloudflare Workers + Hono + IndexedDB 重构计划
 
-> 状态：执行中  
+> 状态：Fastify 已拆除；本地 IndexedDB + Hono Worker 为唯一产品路径
 > 目标版本：v1（本地优先、无账号、Worker 无状态代理）  
 > 包管理器：**pnpm**  
 > 本计划以当前 Vitest 测试所固定的业务行为为基线。迁移可以改变运行时和数据边界，但不能无意改变会话、Tactics、状态推进、Provider 适配器、错误处理和 UI 工作流的业务语义。
@@ -50,6 +50,7 @@ Worker 只接收一次请求需要的 provider、prompt blocks、messages 和 ch
 5. **密钥最小暴露**：导出默认删除 `apiKey`；UI 必须说明本地配置仍可被当前浏览器读取。Worker 不记录请求体和密钥。
 6. **每个阶段都可验证**：每次改动使用 `pnpm test`、必要时 `pnpm test:coverage`、`pnpm build`、`pnpm biome check .`。
 7. **不使用 npm**：依赖和脚本全部通过 `pnpm` 修改和执行；保留用户已有的 `package.json`/lockfile 改动，不回滚无关修改。
+8. **本地回合副作用同步完成（正式语义）**：IndexedDB 主路径上，compaction 与 day 推进后的 daily state update **在同一次 chat turn 内 await 完成**，并进入本次返回/写入；不以旧 Fastify 的响应后 `schedule*` 火忘为契约。旧服务端异步调度仅作迁移期遗留行为，删除 Fastify 时不必回对齐。
 
 ## 3. 数据设计
 
@@ -217,30 +218,26 @@ coverage 继续保持 lines/functions/branches/statements 100%。生成的 `cove
 - Worker bundle 不引用 `node:fs`、`node:path`、JSONL 存储或 Fastify。
 - README 和错误提示明确说明 IndexedDB 本地存储、无跨设备同步和备份责任。
 
-## 7. 当前实施记录（2026-07-11）
+## 7. 当前实施记录（2026-07-15）
 
 已落地：
 
-- `plan.md`、Hono Worker 入口、`wrangler.toml`、Worker health/chat/provider-test proxy。
-- Provider URL 的 HTTPS/localhost/私网地址校验和 Worker JSON 错误处理。
-- IndexedDB schema、memory fallback、local repositories、默认 seed JSON。
-- 前端 config/conversation/tactic API 在浏览器 IndexedDB 下的本地路径。
-- 无状态本地聊天请求、基础 runtime action、编辑最后一条消息。
-- 版本化导出/导入服务、API key 脱敏，以及 Configuration modal 的导入导出入口。
-- Worker、IndexedDB、local chat、export/import 测试；现有测试业务断言保持通过。
-- README、pnpm scripts、Vite proxy 和 Cloudflare 配置。
+- IndexedDB + Hono Worker 本地优先主路径；`pnpm dev` 仅启动 Vite + Wrangler Worker。
+- 前端 API facade 仅走本地仓库（不再 fallback 到 Fastify CRUD）。
+- **Fastify / Node JSONL 后端已从代码树删除**；保留 `src/server/providers` 与 `services/providerTest` 供 Worker 使用。
+- 移除 `fastify`、`@fastify/cors`、`tsx`、`dev:api`、`seed` / `seed:force`。
+- `pnpm test:coverage` 覆盖率 include 收缩为 shared + providers + providerTest + worker + web。
+- 本地 chat 正式语义：compaction 与 daily state 同轮同步完成（原则 8）。
+- 浏览器 seed：`public/default-data/`。
 
-当前仍需在后续迭代完成，不能把本次提交视为最终 Cloudflare 迁移完成：
+后续可选：
 
-- Fastify/Node JSON 文件后端仍保留给现有测试和迁移期，尚未从生产代码树中完全删除。
-- Fastify/Node JSON 文件后端仍保留给现有测试和迁移期，尚未从生产代码树中完全删除。
-- 浏览器端已补齐全量 prompt assembly 语义、opening scene、compaction、daily state update 和 tactic run log；仍需继续用更多异常路径测试覆盖这些新分支。
-- IndexedDB 已支持多 store 原子事务；导入已支持 `replace`、`keep-existing`、`skip` 冲突策略，并在单事务失败时回滚。配置页面提供冲突策略选择。
-- `pnpm test` 当前通过（16 个测试文件、138 个测试），`pnpm build` 当前通过，`pnpm biome check .` 当前通过；`pnpm test:coverage` 已执行但新模块使总覆盖率暂为 lines 90.24%、statements 88.62%、functions 90.04%、branches 84.98%，因此 100% coverage gate 尚未达成。
-- 新增模块的分支测试仍需继续补齐，不能通过降低阈值或忽略文件来掩盖缺口。
+- 将 `src/server/providers` 挪到更中性路径（如 `src/providers`），避免遗留 “server” 命名。
+- Cloudflare 部署验证与 README 运维说明打磨。
 
 ## 8. 已知限制和后续版本
 
 - v1 不提供跨设备同步、登录和云端会话。
 - API key 为本地浏览器配置，Worker proxy 只能隐藏 Provider CORS/URL，不能对 XSS 或本机用户保密。
 - 如果未来需要账号、云端备份或团队共享，新增 D1/R2；IndexedDB 作为离线缓存，不在本计划中偷偷引入远端持久化。
+- 与旧 Fastify 的**时序**差异是故意的：本地路径同轮完成 compaction / daily state；旧路径在 HTTP 返回后再异步执行。功能语义保留，完成时机以本地路径为准。

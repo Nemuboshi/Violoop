@@ -11,22 +11,17 @@ pnpm install
 pnpm dev
 ```
 
-Open `http://127.0.0.1:5173`.
+Open `http://127.0.0.1:5173`. `pnpm dev` starts Vite and the local Hono Worker (Wrangler); `/api` is proxied to port `8787` by default.
 
-The existing Node/Fastify server remains available for the current server test suite and migration work:
+First-run config/tactics/states are seeded from `public/default-data/` into IndexedDB automatically.
 
-```bash
-pnpm seed
-pnpm dev:api
-```
-
-For the Cloudflare-compatible proxy locally, use Wrangler:
+To run only the Cloudflare-compatible proxy:
 
 ```bash
 pnpm dev:worker
 ```
 
-Vite proxies `/api` to the configured local API target during development. `VIOLOOP_HOST` and `VIOLOOP_PORT` can be used for the legacy Node API; production uses the Worker and does not use `VIOLOOP_DATA_DIR`.
+Vite proxies `/api` to the Worker. `VIOLOOP_HOST` and `VIOLOOP_PORT` can override the proxy target (default host `127.0.0.1`, port `8787`).
 
 ## Architecture
 

@@ -8,6 +8,7 @@ import { NewChatModal } from "../../../features/new-chat";
 import { ProviderEditModal } from "../../../features/provider-management";
 import { TacticEditModal } from "../../../features/tactic-management";
 import {
+	confirmReplaceImportPreview,
 	downloadLocalExport,
 	importLocalExport,
 } from "../../../shared/storage/exportActions";
@@ -145,15 +146,18 @@ export default function ChatPage() {
 			<ConfigModal
 				view={configModalView}
 				draft={config.draft}
-				error={config.error || dataActionMessage}
+				error={config.error}
+				statusMessage={dataActionMessage}
 				open={config.open}
 				saving={config.saving}
-				onDeleteProvider={(providerId) =>
-					void config.deleteProvider(providerId)
-				}
-				onDeleteState={(stateId) =>
-					void tacticEditor.deleteStateDefinition(stateId)
-				}
+				onDeleteProvider={(providerId) => {
+					if (!window.confirm(`Delete provider "${providerId}"?`)) return;
+					void config.deleteProvider(providerId);
+				}}
+				onDeleteState={(stateId) => {
+					if (!window.confirm(`Delete state "${stateId}"?`)) return;
+					void tacticEditor.deleteStateDefinition(stateId);
+				}}
 				onOpenChange={config.setOpen}
 				importStrategy={importStrategy}
 				onImportStrategy={setImportStrategy}
@@ -167,7 +171,13 @@ export default function ChatPage() {
 						)
 				}
 				onImport={(file, strategy) =>
-					void importLocalExport(file, strategy)
+					void importLocalExport(
+						file,
+						strategy,
+						strategy === "replace"
+							? { confirm: confirmReplaceImportPreview }
+							: {},
+					)
 						.then(async (result) => {
 							await Promise.all([
 								config.refreshConfig(),
@@ -188,7 +198,10 @@ export default function ChatPage() {
 					void tacticEditor.saveStateDefinitionDraft(state, originalId)
 				}
 				onSubmit={config.saveSettingsDraft}
-				onDeleteTactic={(tacticId) => void tacticEditor.deleteTactic(tacticId)}
+				onDeleteTactic={(tacticId) => {
+					if (!window.confirm(`Delete tactic "${tacticId}"?`)) return;
+					void tacticEditor.deleteTactic(tacticId);
+				}}
 				onEditTactic={page.openTacticEditor}
 				onNewTactic={tacticEditor.openNewTacticEditor}
 				onEditProvider={config.openProviderEditor}

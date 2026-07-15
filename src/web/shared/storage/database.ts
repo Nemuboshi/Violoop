@@ -1,5 +1,5 @@
 const databaseName = "violoop";
-const databaseVersion = 2;
+const databaseVersion = 5;
 
 const stores = [
 	"meta",
@@ -31,26 +31,20 @@ export async function openVioloopDatabase(): Promise<IDBDatabase | null> {
 		const request = indexedDB.open(databaseName, databaseVersion);
 		request.onupgradeneeded = () => {
 			const database = request.result;
-			const transaction = request.transaction;
 			for (const store of stores) {
 				if (!database.objectStoreNames.contains(store)) {
 					database.createObjectStore(store, { keyPath: keyPathFor(store) });
 				}
 			}
-			if (transaction && !database.objectStoreNames.contains("meta")) {
-				database.createObjectStore("meta", { keyPath: "id" });
-			}
-			if (transaction) {
-				transaction.objectStore("meta").put({
-					id: "schema",
-					version: databaseVersion,
-					migratedAt: new Date().toISOString(),
-				});
-			}
+			const upgradeTransaction = request.transaction as IDBTransaction;
+			upgradeTransaction.objectStore("meta").put({
+				id: "schema",
+				version: databaseVersion,
+				migratedAt: new Date().toISOString(),
+			});
 		};
 		request.onsuccess = () => resolve(request.result);
-		request.onerror = () =>
-			reject(request.error ?? new Error("Unable to open local database."));
+		request.onerror = () => reject(new Error("Unable to open local database."));
 	});
 }
 
@@ -67,8 +61,9 @@ export async function getLocal<T>(
 
 export async function listLocal<T>(storeName: StoreName): Promise<T[]> {
 	const database = await openVioloopDatabase();
-	if (!database)
-		return [...(memoryStores.get(storeName)?.values() ?? [])] as T[];
+	if (!database) {
+		return [...(memoryStores.get(storeName)?.values() || [])] as T[];
+	}
 	return request<T[]>(database, storeName, "readonly", (store) =>
 		store.getAll(),
 	);
@@ -121,22 +116,14 @@ export async function runLocalTransaction(
 		);
 		for (const operation of operations) {
 			const store = transaction.objectStore(operation.storeName);
-			if (operation.type === "put") {
-				if (store.keyPath) store.put(operation.value);
-				else store.put(operation.value, operation.key);
-			}
+			if (operation.type === "put") store.put(operation.value);
 			if (operation.type === "delete") store.delete(operation.key);
 			if (operation.type === "clear") store.clear();
 		}
 		transaction.oncomplete = () => resolve();
-		transaction.onerror = () =>
-			reject(
-				transaction.error ?? new Error("Local database transaction failed."),
-			);
-		transaction.onabort = () =>
-			reject(
-				transaction.error ?? new Error("Local database transaction aborted."),
-			);
+		const fail = () => reject(new Error("Local database transaction failed."));
+		transaction.onerror = fail;
+		transaction.onabort = fail;
 	});
 }
 
@@ -167,8 +154,9 @@ function keyPathFor(store: StoreName) {
 
 function keyFromValue(storeName: StoreName, value: unknown): IDBValidKey {
 	const keyPath = keyPathFor(storeName);
-	if (value && typeof value === "object" && keyPath in value)
+	if (value && typeof value === "object" && keyPath in value) {
 		return String((value as Record<string, unknown>)[keyPath]);
+	}
 	return "current";
 }
 
@@ -182,11 +170,8 @@ function request<T>(
 		const transaction = database.transaction(storeName, mode);
 		const result = operation(transaction.objectStore(storeName));
 		result.onsuccess = () => resolve(result.result as T);
-		result.onerror = () =>
-			reject(result.error ?? new Error("Local database request failed."));
+		result.onerror = () => reject(new Error("Local database request failed."));
 		transaction.onerror = () =>
-			reject(
-				transaction.error ?? new Error("Local database transaction failed."),
-			);
+			reject(new Error("Local database transaction failed."));
 	});
 }

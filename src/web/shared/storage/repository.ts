@@ -43,6 +43,15 @@ export async function saveConfig(config: VioloopConfig) {
 	return config;
 }
 
+/** Marks IndexedDB seed as finished so callers can skip /default-data fetches. */
+export async function markLocalSeedComplete() {
+	await putLocal("meta", {
+		id: "seed",
+		complete: true,
+		seededAt: new Date().toISOString(),
+	});
+}
+
 export async function listConversationsLocal() {
 	return (await listLocal<ConversationSummary>("conversations")).sort((a, b) =>
 		b.updatedAt.localeCompare(a.updatedAt),
@@ -58,10 +67,11 @@ export async function saveConversationLocal(conversation: ConversationSummary) {
 }
 
 export async function deleteConversationLocal(id: string) {
-	const [items, compactions, runs] = await Promise.all([
+	const [items, compactions, runs, usage] = await Promise.all([
 		listTimelineItemsLocal(id),
 		listCompactionsLocal(id),
 		listTacticRunsLocal(id),
+		listUsageLocal(),
 	]);
 	await runLocalTransaction([
 		{ type: "delete", storeName: "conversations", key: id },
@@ -80,6 +90,13 @@ export async function deleteConversationLocal(id: string) {
 			storeName: "tacticRuns" as const,
 			key: run.id,
 		})),
+		...usage
+			.filter((entry) => entry.conversationId === id)
+			.map((entry) => ({
+				type: "delete" as const,
+				storeName: "usage" as const,
+				key: entry.requestId,
+			})),
 		...(["sessionClocks", "sessionTactics", "sessionStates"] as const).map(
 			(storeName) => ({ type: "delete" as const, storeName, key: id }),
 		),
@@ -182,18 +199,30 @@ export async function deleteStateDefinitionLocal(id: string) {
 	await deleteLocal("stateDefinitions", id);
 }
 
-export async function saveUsageLocal(requestId: string, usage: ChatUsage) {
-	await putLocal("usage", { requestId, usage });
+export type StoredUsage = {
+	requestId: string;
+	conversationId?: string;
+	usage: ChatUsage;
+};
+
+export async function saveUsageLocal(
+	requestId: string,
+	usage: ChatUsage,
+	conversationId?: string,
+) {
+	await putLocal("usage", {
+		requestId,
+		...(conversationId ? { conversationId } : {}),
+		usage,
+	});
 }
 
 export async function getUsageLocal(requestId: string) {
-	return (
-		await getLocal<{ requestId: string; usage: ChatUsage }>("usage", requestId)
-	)?.usage;
+	return (await getLocal<StoredUsage>("usage", requestId))?.usage;
 }
 
 export async function listUsageLocal() {
-	return listLocal<{ requestId: string; usage: ChatUsage }>("usage");
+	return listLocal<StoredUsage>("usage");
 }
 
 export async function appendLocalItemsAtomic(
@@ -262,7 +291,11 @@ export async function appendLocalItemsAtomic(
 					{
 						type: "put" as const,
 						storeName: "usage" as const,
-						value: { requestId: projection.requestId, usage: projection.usage },
+						value: {
+							requestId: projection.requestId,
+							conversationId: conversation.id,
+							usage: projection.usage,
+						},
 					},
 				]
 			: []),
@@ -344,6 +377,7 @@ export async function replaceConversationTimelineLocal(
 
 export async function clearAllLocalData() {
 	for (const store of [
+		"meta",
 		"config",
 		"conversations",
 		"timelineItems",

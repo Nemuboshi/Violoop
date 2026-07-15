@@ -93,27 +93,23 @@ workerApp.post("/api/providers/test", async (context) => {
 });
 
 workerApp.notFound(async (context) => {
-	if (context.env.ASSETS) {
+	if (context.env?.ASSETS) {
 		return context.env.ASSETS.fetch(context.req.raw);
 	}
 	return context.json({ error: "Not found" }, 404);
 });
 
 workerApp.onError((error, context) => {
+	const err = error as Error & {
+		status?: number;
+		statusCode?: number;
+		detail?: string;
+	};
 	const status =
-		"status" in error && typeof error.status === "number"
-			? error.status
-			: "statusCode" in error && typeof error.statusCode === "number"
-				? error.statusCode
-				: 500;
-	const detail =
-		error instanceof Error &&
-		"detail" in error &&
-		typeof error.detail === "string"
-			? error.detail
-			: undefined;
-	const message =
-		error instanceof Error ? error.message : "Unexpected server error";
+		[err.status, err.statusCode].find((value) => typeof value === "number") ??
+		500;
+	const detail = typeof err.detail === "string" ? err.detail : undefined;
+	const message = err.message || "Unexpected server error";
 	return context.json(
 		{ error: message, ...(detail ? { detail } : {}) },
 		status as
@@ -131,7 +127,6 @@ workerApp.onError((error, context) => {
 			| 504,
 	);
 });
-
 const maxRequestBytes = 2 * 1024 * 1024;
 
 async function readJson<T>(request: Request): Promise<T> {

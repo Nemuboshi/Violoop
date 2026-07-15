@@ -17,12 +17,19 @@ import { editLastUserMessage, sendChatMessage } from "../api/chatApi";
 type ChatSessionStatus = "idle" | "thinking" | "error";
 
 type ChatSessionEffects = {
-	onRefreshConversations?: () => Promise<void>;
+	onRefreshConversations?: () => Promise<unknown>;
 	onRefreshTactics?: (conversationId?: string | null) => Promise<unknown>;
 };
 
 function latestUsage(items: TimelineItem[]) {
 	return [...items].reverse().find((message) => message.usage)?.usage ?? null;
+}
+
+const ACTIVE_CONVERSATION_KEY = "violoop.activeConversationId";
+
+function syncActiveConversationId(id: string | null) {
+	if (id) localStorage.setItem(ACTIVE_CONVERSATION_KEY, id);
+	else localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
 }
 
 export function useChatSession() {
@@ -66,6 +73,7 @@ export function useChatSession() {
 
 	function resetSession() {
 		setActiveConversationId(null);
+		syncActiveConversationId(null);
 		setActiveProfile(defaultSessionProfile);
 		setActiveCapabilities(defaultSessionCapabilities);
 		setActiveClock(null);
@@ -81,6 +89,7 @@ export function useChatSession() {
 
 	function applyConversation(payload: ConversationPayload) {
 		setActiveConversationId(payload.conversation.id);
+		syncActiveConversationId(payload.conversation.id);
 		setActiveProfile(payload.conversation.profile);
 		setActiveCapabilities(payload.conversation.capabilities);
 		setActiveClock(payload.clock);
@@ -93,18 +102,13 @@ export function useChatSession() {
 		setEditingDraft("");
 	}
 
-	async function refreshConversationTimeline(conversationId: string) {
-		const restored = await fetchConversation(conversationId);
-		setActiveClock(restored.clock);
-		setMessages(restored.timelineItems);
-	}
-
 	async function restoreConversation(
 		conversationId: string,
 		effects: Pick<ChatSessionEffects, "onRefreshTactics"> = {},
 	) {
 		const restored = await fetchConversation(conversationId);
 		setActiveConversationId(conversationId);
+		syncActiveConversationId(conversationId);
 		setActiveProfile(restored.conversation.profile);
 		setActiveCapabilities(restored.conversation.capabilities);
 		setActiveClock(restored.clock);
@@ -138,16 +142,6 @@ export function useChatSession() {
 
 		await effects.onRefreshConversations?.();
 		await effects.onRefreshTactics?.(conversationId);
-		if (payload.createdItems?.some((item) => item.kind === "day_transition")) {
-			for (const delay of [1500, 5000, 12000]) {
-				window.setTimeout(() => {
-					void effects.onRefreshTactics?.(conversationId);
-					if (conversationId) {
-						void refreshConversationTimeline(conversationId);
-					}
-				}, delay);
-			}
-		}
 	}
 
 	async function sendMessage(effects: ChatSessionEffects = {}) {
@@ -158,6 +152,11 @@ export function useChatSession() {
 
 		if (!activeConversationId) {
 			setError("Start a new chat before sending a message.");
+			return;
+		}
+
+		if (typeof navigator !== "undefined" && navigator.onLine === false) {
+			setError("You appear to be offline. Reconnect, then try sending again.");
 			return;
 		}
 
@@ -172,6 +171,7 @@ export function useChatSession() {
 			createdAt: new Date().toISOString(),
 		};
 
+		const previousMessages = messages;
 		setMessages((current) => [...current, userMessage]);
 		setDraft("");
 		setStatus("thinking");
@@ -192,19 +192,8 @@ export function useChatSession() {
 					: "Unable to reach the model provider.";
 			setStatus("error");
 			setError(message);
-			setMessages((current) =>
-				current.some((item) => item.role === "assistant" && item.content === "")
-					? current.map((item) =>
-							item.role === "assistant" && item.content === ""
-								? {
-										...item,
-										content:
-											"The request failed before a response was produced.",
-									}
-								: item,
-						)
-					: current,
-			);
+			setMessages(previousMessages);
+			setDraft(content);
 		}
 	}
 

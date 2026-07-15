@@ -24,7 +24,9 @@ export function useConversationWorkflow(
 	const [renamingConversation, setRenamingConversation] = useState(false);
 
 	async function refreshConversations() {
-		setConversations(await fetchConversations());
+		const next = await fetchConversations();
+		setConversations(next);
+		return next;
 	}
 
 	async function confirmDeleteConversation(

@@ -1,63 +1,30 @@
 import type {
 	ConversationPayload,
 	ConversationSummary,
-	ConversationsResponse,
 	CreateConversationRequest,
 	RenameConversationRequest,
 } from "../../../../shared/types";
-import { fetchJson, fetchJsonOrNull } from "../../../shared/api";
 import {
 	createLocalConversation,
 	getLocalConversationPayload,
-	hasIndexedDb,
 	listLocalConversations,
 	removeLocalConversation,
 	renameLocalConversation,
 } from "../../../shared/storage/localData";
 
 export async function fetchConversations() {
-	if (hasIndexedDb()) return listLocalConversations();
-	const payload =
-		await fetchJsonOrNull<Partial<ConversationsResponse>>("/api/conversations");
-	return payload?.conversations ?? [];
+	return listLocalConversations();
 }
 
 export async function deleteConversation(conversationId: string) {
-	if (hasIndexedDb()) return removeLocalConversation(conversationId);
-	const payload = await fetchJson<Partial<ConversationsResponse>>(
-		`/api/conversations/${encodeURIComponent(conversationId)}`,
-		{ method: "DELETE" },
-		{
-			errorMessage: (status, payload) =>
-				typeof payload?.error === "string"
-					? payload.error
-					: `Conversation delete failed with ${status}`,
-		},
-	);
-	return payload.conversations ?? [];
+	return removeLocalConversation(conversationId);
 }
 
 export async function renameConversation(
 	conversationId: string,
 	input: Required<Pick<RenameConversationRequest, "title">>,
 ) {
-	if (hasIndexedDb())
-		return renameLocalConversation(conversationId, input.title);
-	const payload = await fetchJson<Partial<ConversationsResponse>>(
-		`/api/conversations/${encodeURIComponent(conversationId)}`,
-		{
-			method: "PATCH",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(input),
-		},
-		{
-			errorMessage: (status, payload) =>
-				typeof payload?.error === "string"
-					? payload.error
-					: `Conversation rename failed with ${status}`,
-		},
-	);
-	return payload.conversations ?? [];
+	return renameLocalConversation(conversationId, input.title);
 }
 
 export async function createConversation(
@@ -72,48 +39,11 @@ export async function createConversation(
 		>
 	>,
 ) {
-	if (hasIndexedDb()) return createLocalConversation(input);
-	const payload = await fetchJson<Partial<ConversationPayload>>(
-		"/api/conversations",
-		{
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(input),
-		},
-		{
-			errorMessage: (status, payload) =>
-				typeof payload?.error === "string"
-					? payload.error
-					: `Conversation create failed with ${status}`,
-		},
-	);
-	if (
-		!payload.conversation ||
-		payload.clock === undefined ||
-		!payload.timelineItems
-	) {
-		throw new Error("Conversation create response was empty.");
-	}
-	return payload as ConversationPayload;
+	return createLocalConversation(input);
 }
 
 export async function fetchConversation(conversationId: string) {
-	if (hasIndexedDb()) return getLocalConversationPayload(conversationId);
-	const payload = await fetchJson<Partial<ConversationPayload>>(
-		`/api/conversations/${encodeURIComponent(conversationId)}/messages`,
-		undefined,
-		{
-			errorMessage: (status) => `Conversation request failed with ${status}`,
-		},
-	);
-	if (
-		!payload.conversation ||
-		payload.clock === undefined ||
-		!payload.timelineItems
-	) {
-		throw new Error("Conversation response was empty.");
-	}
-	return payload as ConversationPayload;
+	return getLocalConversationPayload(conversationId);
 }
 
-export type { ConversationSummary };
+export type { ConversationPayload, ConversationSummary };

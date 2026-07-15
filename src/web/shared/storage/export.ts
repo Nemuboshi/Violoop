@@ -81,6 +81,7 @@ export const exportSchema = z.object({
 		.array(
 			z.strictObject({
 				requestId: z.string().min(1),
+				conversationId: z.string().optional(),
 				usage: z.object({
 					promptTokens: z.number().finite().optional(),
 					completionTokens: z.number().finite().optional(),

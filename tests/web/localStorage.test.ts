@@ -38,6 +38,7 @@ import {
 import {
 	clearAllLocalData,
 	getConfig,
+	saveStateDefinitionLocal,
 } from "../../src/web/shared/storage/repository";
 
 const config: VioloopConfig = {
@@ -204,7 +205,9 @@ describe("IndexedDB local data", () => {
 			conversationId: created.conversation.id,
 			message: "hello",
 		});
-		expect(sent.createdItems[0]).toMatchObject({ content: "Local answer" });
+		expect(
+			sent.createdItems.some((item) => item.content === "Local answer"),
+		).toBe(true);
 		const edited = await editLocalLastUserMessage({
 			conversationId: created.conversation.id,
 			message: "edited",
@@ -240,5 +243,204 @@ describe("IndexedDB local data", () => {
 		).rejects.toThrow("was not found");
 		expect(() => parseImport("bad json")).toThrow("valid JSON");
 		expect(() => parseImport(JSON.stringify({ format: "wrong" }))).toThrow();
+	});
+
+	it("supports import conflict strategies and repository maintenance", async () => {
+		await saveLocalConfig(config);
+		const created = await createLocalConversation({
+			title: "Import target",
+			profile: { assistantName: "A", userRole: "U", assistantRole: "R" },
+			capabilities: {
+				tactics: false,
+				dayProgression: false,
+				sessionState: false,
+				sceneEvents: false,
+			},
+			allowedTacticIds: [],
+			enabledStateIds: [],
+		});
+		const exported = await exportLocalData();
+		const duplicate = structuredClone(exported);
+		duplicate.conversations[0].conversation.title = "Imported title";
+		await importLocalData(duplicate, { strategy: "keep-existing" });
+		expect(
+			(await getLocalConversationPayload(created.conversation.id)).conversation
+				.title,
+		).toBe("Import target");
+		await importLocalData(duplicate, { strategy: "skip" });
+		const skipped = await importLocalData(duplicate, { strategy: "replace" });
+		expect(skipped.replaced).toBeGreaterThan(0);
+		await expect(
+			importLocalData({
+				...exported,
+				config: {
+					...exported.config,
+					chat: { ...exported.config.chat, defaultProvider: "missing" },
+				},
+			}),
+		).rejects.toThrow("unknown default provider");
+	});
+
+	it("completes day transition, daily state, and compaction in the same turn", async () => {
+		await saveStateDefinitionLocal({
+			id: "trust",
+			name: "Trust",
+			defaultValue: 45,
+		});
+		await saveLocalConfig({
+			...config,
+			chat: {
+				...config.chat,
+				compaction: { enabled: true, triggerTokens: 1, keepRecentTokens: 1 },
+			},
+		});
+		const created = await createLocalConversation({
+			title: "Sync semantics",
+			profile: { assistantName: "A", userRole: "U", assistantRole: "R" },
+			capabilities: {
+				tactics: false,
+				dayProgression: true,
+				sessionState: true,
+				sceneEvents: true,
+			},
+			allowedTacticIds: [],
+			enabledStateIds: ["trust"],
+		});
+
+		let callIndex = 0;
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => {
+				callIndex += 1;
+				// generateTurn awaits compaction before daily state.
+				if (callIndex === 1) {
+					return Response.json({
+						text: JSON.stringify({
+							messages: [{ kind: "chat", content: `Answer ${"x".repeat(80)}` }],
+							runtimeActions: [
+								{
+									tool: "advance_day",
+									arguments: { content: "Day 2", scene: "Rain" },
+								},
+							],
+						}),
+						usage: { promptTokens: 40, completionTokens: 5, totalTokens: 45 },
+					});
+				}
+				if (callIndex === 2) {
+					return Response.json({
+						text: "Compacted summary of the conversation so far.",
+					});
+				}
+				return Response.json({
+					text: JSON.stringify({
+						patches: [{ key: "trust", delta: 2 }],
+						stateNote: "day state ready",
+					}),
+				});
+			}),
+		);
+
+		const sent = await sendLocalChatMessage({
+			conversationId: created.conversation.id,
+			message: "hello ".repeat(40),
+		});
+
+		expect(
+			sent.createdItems.some((item) => item.kind === "day_transition"),
+		).toBe(true);
+		expect(sent.createdItems.some((item) => item.kind === "scene")).toBe(true);
+		expect(
+			sent.createdItems.some(
+				(item) =>
+					item.kind === "state_update" &&
+					item.content.includes("day state ready"),
+			),
+		).toBe(true);
+
+		const { listCompactionsLocal, getSessionUserStateLocal } = await import(
+			"../../src/web/shared/storage/repository"
+		);
+		expect(
+			await listCompactionsLocal(created.conversation.id),
+		).not.toHaveLength(0);
+		const states = await getSessionUserStateLocal(created.conversation.id);
+		expect(
+			states?.some((state) => state.key === "trust" && state.value !== 45),
+		).toBe(true);
+	});
+
+	it("covers advanced local chat runtime paths", async () => {
+		await saveStateDefinitionLocal({
+			id: "trust",
+			name: "Trust",
+			defaultValue: 45,
+		});
+		await saveLocalConfig({
+			...config,
+			chat: {
+				...config.chat,
+				compaction: { enabled: false, triggerTokens: 1, keepRecentTokens: 1 },
+			},
+		});
+		const created = await createLocalConversation({
+			title: "Runtime",
+			profile: { assistantName: "A", userRole: "U", assistantRole: "R" },
+			capabilities: {
+				tactics: false,
+				dayProgression: true,
+				sessionState: true,
+				sceneEvents: true,
+			},
+			allowedTacticIds: [],
+			enabledStateIds: ["trust"],
+		});
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response(
+						JSON.stringify({
+							text: JSON.stringify({
+								messages: [{ kind: "chat", content: "Answer" }],
+								runtimeActions: [
+									{
+										tool: "advance_day",
+										arguments: { content: "Day 2", scene: "Rain" },
+									},
+									{
+										tool: "update_session_state",
+										arguments: {
+											patches: [{ key: "trust", delta: 1 }],
+											note: "warmer",
+										},
+									},
+								],
+							}),
+							usage: { promptTokens: 2 },
+						}),
+						{ status: 200 },
+					),
+			),
+		);
+		const sent = await sendLocalChatMessage({
+			conversationId: created.conversation.id,
+			message: "hello",
+		});
+		expect(
+			sent.createdItems.some((item) => item.kind === "day_transition"),
+		).toBe(true);
+		await expect(
+			sendLocalChatMessage({
+				conversationId: created.conversation.id,
+				message: "  ",
+			}),
+		).rejects.toThrow("required");
+		await expect(
+			editLocalLastUserMessage({
+				conversationId: created.conversation.id,
+				message: "   ",
+			}),
+		).rejects.toThrow("required");
 	});
 });

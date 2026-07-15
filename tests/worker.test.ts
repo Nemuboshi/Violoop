@@ -89,4 +89,135 @@ describe("Hono Worker proxy", () => {
 		expect(response.status).toBe(401);
 		vi.unstubAllGlobals();
 	});
+
+	it("enforces host allowlists, localhost dev URLs, payload limits, and asset fallback", async () => {
+		const allowedOnly = await workerApp.request(
+			"/api/chat",
+			{
+				method: "POST",
+				body: JSON.stringify({
+					provider: provider(),
+					messages: [{ role: "user", content: "Hi" }],
+				}),
+			},
+			{ VIOLOOP_ALLOWED_PROVIDER_HOSTS: "other.example" },
+		);
+		expect(allowedOnly.status).toBe(400);
+
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => sse("local")),
+		);
+		const localhost = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: {
+					...provider(),
+					baseUrl: "http://localhost:8787/v1",
+				},
+				messages: [{ role: "user", content: "Hi" }],
+			}),
+		});
+		expect(localhost.status).toBe(200);
+
+		const oversized = await workerApp.request("/api/chat", {
+			method: "POST",
+			headers: { "content-length": String(3 * 1024 * 1024) },
+			body: JSON.stringify({ provider: provider(), messages: [] }),
+		});
+		expect(oversized.status).toBe(413);
+
+		const assets = await workerApp.request(
+			"/missing",
+			{},
+			{
+				ASSETS: {
+					fetch: async () => new Response("spa", { status: 200 }),
+				},
+			},
+		);
+		expect(await assets.text()).toBe("spa");
+
+		const missingAssets = await workerApp.request("/missing");
+		expect(missingAssets.status).toBe(404);
+
+		const insecure = await workerApp.request("/api/providers/test", {
+			method: "POST",
+			body: JSON.stringify({
+				providerId: "p",
+				provider: { ...provider(), baseUrl: "http://provider.example/v1" },
+				model: "model-a",
+			}),
+		});
+		expect(insecure.status).toBe(400);
+
+		const credentialUrl = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: {
+					...provider(),
+					baseUrl: "https://user:pass@provider.example/v1",
+				},
+				messages: [{ role: "user", content: "Hi" }],
+			}),
+		});
+		expect(credentialUrl.status).toBe(400);
+
+		const invalidHost = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: { ...provider(), baseUrl: "https://10.0.0.1/v1" },
+				messages: [{ role: "user", content: "Hi" }],
+			}),
+		});
+		expect(invalidHost.status).toBe(400);
+		vi.unstubAllGlobals();
+	});
+
+	it("returns usage from provider streams and successful provider tests", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response(
+						[
+							`data: ${JSON.stringify({ choices: [{ delta: { content: "hi" } }] })}`,
+							`data: ${JSON.stringify({ usage: { prompt_tokens: 3, completion_tokens: 1 } })}`,
+							"data: [DONE]",
+						].join("\n"),
+						{
+							status: 200,
+							headers: { "Content-Type": "text/event-stream" },
+						},
+					),
+			),
+		);
+		const chat = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: provider(),
+				messages: [{ role: "user", content: "Hi" }],
+			}),
+		});
+		expect(chat.status).toBe(200);
+		expect(await chat.json()).toMatchObject({
+			text: "hi",
+			usage: expect.objectContaining({ promptTokens: 3 }),
+		});
+
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => sse("ok")),
+		);
+		const test = await workerApp.request("/api/providers/test", {
+			method: "POST",
+			body: JSON.stringify({
+				providerId: "p",
+				provider: provider(),
+				model: "model-a",
+			}),
+		});
+		expect(test.status).toBe(200);
+		vi.unstubAllGlobals();
+	});
 });

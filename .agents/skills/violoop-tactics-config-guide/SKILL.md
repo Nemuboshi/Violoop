@@ -9,20 +9,10 @@ Use this skill to guide configuration work for Violoop's session state and tacti
 
 ## Locate Data
 
-1. Load `.env` if it exists.
-2. Resolve the data directory from `VIOLOOP_DATA_DIR`; otherwise use `data`.
-3. Expect these files under that directory:
-   - `states.json`
-   - `tactics.json`
-   - `settings.json`
-   - `conversations.jsonl`
-4. If `states.json` or `tactics.json` does not exist at the resolved location, run:
-
-```powershell
-pnpm seed
-```
-
-Do not use `pnpm seed:force` unless the user explicitly wants to overwrite seeded data.
+1. Browser seed defaults live under `public/default-data/` (`settings.json`, `tactics.json`, `states.json`) and are loaded into IndexedDB by `ensureLocalSeed`.
+2. Runtime user data (config, tactics, states, conversations) lives in IndexedDB (`violoop` database), not disk JSONL.
+3. Export/import JSON from the Configuration modal is the backup path for tactics/states libraries and conversations.
+4. Editing recommendations should target shapes valid for IndexedDB / export JSON, matching `src/shared` types and Zod schemas.
 
 ## Current Model
 
@@ -105,4 +95,4 @@ For a config proposal, return:
 2. `states.json` additions, if any.
 3. `tactics.json` additions, if any.
 4. Dependency notes: which tactics require which states.
-5. Validation notes: ID format, duplicate IDs, and whether `pnpm seed` is needed first.
+5. Validation notes: ID format, duplicate IDs, and whether browser seed / IndexedDB already has conflicting entries.

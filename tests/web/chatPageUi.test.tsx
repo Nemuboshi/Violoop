@@ -5,6 +5,27 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ChatPage from "../../src/web/pages/chat-page/ui/ChatPage";
 
+const downloadLocalExport = vi.fn(async () => ({
+	format: "violoop-export",
+	exportedAt: new Date().toISOString(),
+}));
+const importLocalExport = vi.fn(async () => ({
+	imported: 1,
+	skipped: 0,
+	replaced: 0,
+	conversations: 1,
+	tactics: 0,
+	stateDefinitions: 0,
+	strategy: "replace" as const,
+	preserved: 0,
+}));
+
+vi.mock("../../src/web/shared/storage/exportActions", () => ({
+	downloadLocalExport: (...args: unknown[]) => downloadLocalExport(...args),
+	importLocalExport: (...args: unknown[]) => importLocalExport(...args),
+	confirmReplaceImportPreview: () => true,
+}));
+
 const openConfigModal = vi.fn();
 const openNewChatModal = vi.fn();
 const restoreConversation = vi.fn();
@@ -21,6 +42,7 @@ const setProviderDraft = vi.fn();
 const setProviderTestOpen = vi.fn();
 const setConfigOpen = vi.fn();
 const saveSettingsDraft = vi.fn();
+const refreshConfig = vi.fn();
 const updateConfigSettingsDraft = vi.fn();
 const deleteTactic = vi.fn();
 const openTacticEditor = vi.fn();
@@ -107,7 +129,7 @@ vi.mock("../../src/web/pages/chat-page/model/useChatPage", () => ({
 				compactionTriggerTokens: "1000",
 				compactionKeepRecentTokens: "100",
 			},
-			error: "Config warning",
+			error: "",
 			saving: false,
 			providerDraft: null,
 			providerTestOpen: true,
@@ -129,6 +151,7 @@ vi.mock("../../src/web/pages/chat-page/model/useChatPage", () => ({
 			setProviderDraft,
 			setProviderTestOpen,
 			saveSettingsDraft,
+			refreshConfig,
 		},
 		configModalView: {
 			activeModelLabel: "Active model",
@@ -164,6 +187,7 @@ vi.mock("../../src/web/pages/chat-page/model/useChatPage", () => ({
 			setConversationToRename,
 			setRenameTitle,
 			confirmRenameConversation,
+			refreshConversations: vi.fn(),
 		},
 		newChat: {
 			open: false,
@@ -206,6 +230,7 @@ vi.mock("../../src/web/pages/chat-page/model/useChatPage", () => ({
 			selectedTacticIds: ["calm"],
 			stateDefinitions: [{ id: "urgency", name: "Urgency", defaultValue: 40 }],
 			tacticsStatus: null,
+			refreshLibraryStatus: vi.fn(),
 		},
 		sidebarView: {
 			conversations: [{ id: "c1", title: "Morning", active: true }],
@@ -234,10 +259,13 @@ vi.mock("../../src/web/pages/chat-page/model/useChatPage", () => ({
 
 afterEach(() => {
 	vi.clearAllMocks();
+	vi.unstubAllGlobals();
+	vi.restoreAllMocks();
 });
 
 describe("chat page UI wiring", () => {
 	it("connects sidebar, composer, config, provider, tactic, new chat, and delete actions", async () => {
+		vi.spyOn(window, "confirm").mockReturnValue(true);
 		const user = userEvent.setup();
 		render(<ChatPage />);
 
@@ -320,10 +348,18 @@ describe("chat page UI wiring", () => {
 				name: "Delete",
 			}),
 		);
+		expect(deleteProvider).toHaveBeenCalledWith("local");
+		vi.spyOn(window, "confirm").mockReturnValue(false);
+		await user.click(
+			within(providerRow as HTMLElement).getByRole("button", {
+				name: "Delete",
+			}),
+		);
+		expect(deleteProvider).toHaveBeenCalledTimes(1);
+		vi.spyOn(window, "confirm").mockReturnValue(true);
 		await user.click(screen.getByRole("button", { name: "New provider" }));
 		expect(activateProvider).toHaveBeenCalledWith("local");
 		expect(openProviderEditor).toHaveBeenCalledWith("local");
-		expect(deleteProvider).toHaveBeenCalledWith("local");
 		expect(openNewProviderEditor).toHaveBeenCalled();
 
 		await user.click(screen.getByRole("tab", { name: "Tactics" }));
@@ -333,6 +369,10 @@ describe("chat page UI wiring", () => {
 		expect(openNewTacticEditor).toHaveBeenCalled();
 		expect(openTacticEditor).toHaveBeenCalledWith("calm");
 		expect(deleteTactic).toHaveBeenCalledWith("calm");
+		vi.spyOn(window, "confirm").mockReturnValue(false);
+		await user.click(screen.getByRole("button", { name: "Delete" }));
+		expect(deleteTactic).toHaveBeenCalledTimes(1);
+		vi.spyOn(window, "confirm").mockReturnValue(true);
 
 		await user.click(screen.getByRole("tab", { name: "States" }));
 		const stateRow = screen.getByText("Urgency").closest("div")?.parentElement;
@@ -349,5 +389,62 @@ describe("chat page UI wiring", () => {
 			within(stateRow as HTMLElement).getByRole("button", { name: "Delete" }),
 		);
 		expect(deleteStateDefinition).toHaveBeenCalledWith("urgency");
+		vi.spyOn(window, "confirm").mockReturnValue(false);
+		await user.click(
+			within(stateRow as HTMLElement).getByRole("button", { name: "Delete" }),
+		);
+		expect(deleteStateDefinition).toHaveBeenCalledTimes(1);
+		vi.spyOn(window, "confirm").mockReturnValue(true);
+
+		await user.click(screen.getByRole("tab", { name: "Settings" }));
+		await user.click(screen.getByRole("button", { name: "Export local data" }));
+		expect(downloadLocalExport).toHaveBeenCalled();
+		await screen.findByText("Local data exported.");
+		downloadLocalExport.mockRejectedValueOnce(new Error("Export failed."));
+		await user.click(screen.getByRole("button", { name: "Export local data" }));
+		await screen.findByText("Export failed.");
+		downloadLocalExport.mockRejectedValueOnce("export-boom");
+		await user.click(screen.getByRole("button", { name: "Export local data" }));
+		await screen.findByText("Export failed.");
+
+		await user.click(
+			screen.getByRole("combobox", { name: "Import conflict behavior" }),
+		);
+		await user.click(
+			await screen.findByRole("option", {
+				name: "Keep existing local data",
+			}),
+		);
+		const file = new File(['{"format":"violoop-export"}'], "violoop.json", {
+			type: "application/json",
+		});
+		const input = document.querySelector(
+			"input[type='file']",
+		) as HTMLInputElement;
+		await user.upload(input, file);
+		expect(importLocalExport).toHaveBeenCalledWith(file, "keep-existing", {});
+		await screen.findByText("Imported 1 records; skipped 0; replaced 0.");
+
+		await user.click(
+			screen.getByRole("combobox", { name: "Import conflict behavior" }),
+		);
+		await user.click(
+			await screen.findByRole("option", {
+				name: "Replace matching local data",
+			}),
+		);
+		await user.upload(input, file);
+		expect(importLocalExport).toHaveBeenCalledWith(
+			file,
+			"replace",
+			expect.objectContaining({ confirm: expect.any(Function) }),
+		);
+		await screen.findByText("Imported 1 records; skipped 0; replaced 0.");
+		importLocalExport.mockRejectedValueOnce(new Error("Import failed."));
+		await user.upload(input, file);
+		await screen.findByText("Import failed.");
+		importLocalExport.mockRejectedValueOnce("import-boom");
+		await user.upload(input, file);
+		await screen.findByText("Import failed.");
 	});
 });

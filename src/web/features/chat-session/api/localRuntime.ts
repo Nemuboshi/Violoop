@@ -99,10 +99,10 @@ export async function selectLocalTactics(input: {
 	const tacticById = new Map(tactics.map((tactic) => [tactic.id, tactic]));
 	const loaded = decisions
 		.filter((decision) => decision.loaded)
-		.flatMap((decision) => {
-			const tactic = tacticById.get(decision.tacticId);
-			return tactic ? [{ ...tactic, score: decision.score }] : [];
-		});
+		.map((decision) => ({
+			...(tacticById.get(decision.tacticId) as (typeof tactics)[number]),
+			score: decision.score,
+		}));
 	return { loaded, decisions, states, runs };
 }
 

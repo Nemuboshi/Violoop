@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import {
+	assemblePrompt,
+	runtimeToolsForCapabilities,
+} from "../../src/shared/domain/prompt";
 import type { LoadedTactic, TimelineItem } from "../../src/shared/types";
 
 const clock = {
@@ -21,10 +25,7 @@ const allCapabilities = {
 };
 
 describe("chat prompt assembly", () => {
-	it("separates global policy, session profile, runtime context, tactics, and transcript roles", async () => {
-		const { assembleChatPrompt } = await import(
-			"../../src/server/promptAssembly"
-		);
+	it("separates global policy, session profile, runtime context, tactics, and transcript roles", () => {
 		const tactic: LoadedTactic = {
 			id: "calm",
 			name: "Calm down",
@@ -34,7 +35,7 @@ describe("chat prompt assembly", () => {
 			blockedKeywords: [],
 			instruction: "Use short, grounded wording.",
 		};
-		const prompt = assembleChatPrompt({
+		const prompt = assemblePrompt({
 			globalSystemPrompt: "  Stay direct.  ",
 			profile,
 			capabilities: allCapabilities,
@@ -103,11 +104,8 @@ describe("chat prompt assembly", () => {
 		expect(dynamic.content).toContain("Tactic: Calm down");
 	});
 
-	it("keeps empty optional sections out while still stating current runtime day", async () => {
-		const { assembleChatPrompt } = await import(
-			"../../src/server/promptAssembly"
-		);
-		const prompt = assembleChatPrompt({
+	it("keeps empty optional sections out while still stating current runtime day", () => {
+		const prompt = assemblePrompt({
 			globalSystemPrompt: "Be useful.",
 			profile,
 			capabilities: allCapabilities,
@@ -125,14 +123,29 @@ describe("chat prompt assembly", () => {
 		);
 		expect(block(prompt, "dynamic-runtime").content).not.toContain("Tactic:");
 	});
+
+	it("lists runtime tools from capabilities", () => {
+		expect(
+			runtimeToolsForCapabilities({
+				tactics: true,
+				dayProgression: false,
+				sessionState: false,
+				sceneEvents: false,
+			}),
+		).toEqual([]);
+		expect(
+			runtimeToolsForCapabilities({
+				tactics: true,
+				dayProgression: true,
+				sessionState: true,
+				sceneEvents: true,
+			}),
+		).toEqual(["advance_day", "emit_scene", "update_session_state"]);
+	});
 });
 
 function block(
-	prompt: Awaited<
-		ReturnType<
-			typeof import("../../src/server/promptAssembly").assembleChatPrompt
-		>
-	>,
+	prompt: ReturnType<typeof assemblePrompt>,
 	label: "stable-system" | "session-profile" | "dynamic-runtime",
 ) {
 	return prompt.promptBlocks.find(

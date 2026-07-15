@@ -289,10 +289,18 @@ export function sanitizeStatePatches(states: UserState[], patches: unknown) {
 		if (!raw || typeof raw !== "object") return [];
 		const patch = raw as Record<string, unknown>;
 		const key = typeof patch.key === "string" ? patch.key : "";
-		if (!key || seen.has(key) || !allowed.has(key)) return [];
+		const state = allowed.get(key);
+		if (!key || seen.has(key) || !state) return [];
 		seen.add(key);
 		const delta = clamp(Math.trunc(Number(patch.delta)), -10, 10);
-		return [{ key, delta, reason: sanitizeRuntimeText(patch.reason, 240) }];
+		return [
+			{
+				key,
+				delta,
+				reason: sanitizeRuntimeText(patch.reason, 240),
+				state,
+			},
+		];
 	});
 }
 
@@ -304,21 +312,17 @@ export function applyStatePatchValues(states: UserState[], patches: unknown) {
 		delta: number;
 		reason: string;
 	}> = [];
-	const sanitized = sanitizeStatePatches(states, patches);
-	const stateByKey = new Map(states.map((state) => [state.key, state]));
 	const now = new Date().toISOString();
-	for (const patch of sanitized) {
-		const state = stateByKey.get(patch.key);
-		if (!state) continue;
-		const previousValue = state.value;
-		state.value = clamp(previousValue + patch.delta, 0, 100);
-		state.source = "observed";
-		state.confidence = 0.75;
-		state.updatedAt = now;
+	for (const patch of sanitizeStatePatches(states, patches)) {
+		const previousValue = patch.state.value;
+		patch.state.value = clamp(previousValue + patch.delta, 0, 100);
+		patch.state.source = "observed";
+		patch.state.confidence = 0.75;
+		patch.state.updatedAt = now;
 		applied.push({
 			key: patch.key,
 			previousValue,
-			nextValue: state.value,
+			nextValue: patch.state.value,
 			delta: patch.delta,
 			reason: patch.reason,
 		});

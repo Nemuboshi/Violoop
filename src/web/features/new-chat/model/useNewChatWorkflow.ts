@@ -25,7 +25,7 @@ export type NewChatDraft = SessionProfile &
 type UseNewChatWorkflowOptions = {
 	refreshTacticLibraryStatus: () => Promise<TacticsStatusResponse | null>;
 	onConversationCreated: (payload: ConversationPayload) => void;
-	onRefreshConversations: () => Promise<void>;
+	onRefreshConversations: () => Promise<unknown>;
 	onRefreshTactics: (conversationId: string) => Promise<unknown>;
 };
 

@@ -1,10 +1,32 @@
 // @vitest-environment jsdom
 
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { VioloopConfig } from "../../src/shared/types";
+import {
+	createConversation,
+	deleteConversation,
+	fetchConversation,
+	fetchConversations,
+	renameConversation,
+} from "../../src/web/entities/conversation";
+import {
+	deleteStateDefinition,
+	deleteTactic,
+	fetchTacticsStatus,
+	saveStateDefinition,
+	saveTactic,
+} from "../../src/web/entities/tactic";
 import { useChatSession } from "../../src/web/features/chat-session";
+import {
+	editLastUserMessage,
+	sendChatMessage,
+} from "../../src/web/features/chat-session/api/chatApi";
 import { useConfigSettingsWorkflow } from "../../src/web/features/config-settings";
+import {
+	fetchConfig,
+	saveConfig,
+} from "../../src/web/features/config-settings/api/configApi";
 import { useConversationWorkflow } from "../../src/web/features/conversation-management";
 import { useNewChatWorkflow } from "../../src/web/features/new-chat";
 import {
@@ -17,6 +39,32 @@ import {
 	useTacticEditorWorkflow,
 	useTacticsWorkflow,
 } from "../../src/web/features/tactic-management";
+
+vi.mock("../../src/web/entities/conversation", () => ({
+	createConversation: vi.fn(),
+	deleteConversation: vi.fn(),
+	fetchConversation: vi.fn(),
+	fetchConversations: vi.fn(),
+	renameConversation: vi.fn(),
+}));
+
+vi.mock("../../src/web/entities/tactic", () => ({
+	deleteStateDefinition: vi.fn(),
+	deleteTactic: vi.fn(),
+	fetchTacticsStatus: vi.fn(),
+	saveStateDefinition: vi.fn(),
+	saveTactic: vi.fn(),
+}));
+
+vi.mock("../../src/web/features/config-settings/api/configApi", () => ({
+	fetchConfig: vi.fn(),
+	saveConfig: vi.fn(),
+}));
+
+vi.mock("../../src/web/features/chat-session/api/chatApi", () => ({
+	editLastUserMessage: vi.fn(),
+	sendChatMessage: vi.fn(),
+}));
 
 function jsonResponse(payload: unknown, init: ResponseInit = {}) {
 	return new Response(JSON.stringify(payload), {
@@ -35,6 +83,24 @@ function mockFetch(...responses: Array<Response | (() => Response)>) {
 	});
 	vi.stubGlobal("fetch", fetchMock);
 	return fetchMock;
+}
+
+function queueMock(
+	fn: ReturnType<typeof vi.fn>,
+	...responses: Array<unknown | (() => unknown)>
+) {
+	const queue = [...responses];
+	fn.mockImplementation(async () => {
+		const next = queue.shift();
+		if (next === undefined) {
+			throw new Error("Unexpected API call");
+		}
+		if (typeof next === "function") {
+			return (next as () => unknown)();
+		}
+		return next;
+	});
+	return fn;
 }
 
 const profile = {
@@ -130,6 +196,23 @@ const stateDefinition = {
 	defaultValue: 40,
 };
 
+beforeEach(() => {
+	vi.mocked(createConversation).mockReset();
+	vi.mocked(deleteConversation).mockReset();
+	vi.mocked(fetchConversation).mockReset();
+	vi.mocked(fetchConversations).mockReset();
+	vi.mocked(renameConversation).mockReset();
+	vi.mocked(fetchTacticsStatus).mockReset();
+	vi.mocked(saveTactic).mockReset();
+	vi.mocked(deleteTactic).mockReset();
+	vi.mocked(saveStateDefinition).mockReset();
+	vi.mocked(deleteStateDefinition).mockReset();
+	vi.mocked(fetchConfig).mockReset();
+	vi.mocked(saveConfig).mockReset();
+	vi.mocked(sendChatMessage).mockReset();
+	vi.mocked(editLastUserMessage).mockReset();
+});
+
 afterEach(() => {
 	vi.useRealTimers();
 	vi.unstubAllGlobals();
@@ -137,12 +220,10 @@ afterEach(() => {
 
 describe("web business workflows", () => {
 	it("loads and saves global chat settings through the config workflow", async () => {
-		mockFetch(
-			jsonResponse(configResponse),
-			jsonResponse({ config }),
-			jsonResponse(configResponse),
-			jsonResponse({ error: "Save failed" }, { status: 500 }),
-		);
+		queueMock(vi.mocked(fetchConfig), configResponse, configResponse);
+		queueMock(vi.mocked(saveConfig), { config }, () => {
+			throw new Error("Save failed");
+		});
 		const refreshTacticLibrary = vi.fn(async () => []);
 		const { result } = renderHook(() =>
 			useConfigSettingsWorkflow({ refreshTacticLibrary }),
@@ -188,12 +269,10 @@ describe("web business workflows", () => {
 	});
 
 	it("keeps conversation deletion bounded and resets the active session only when needed", async () => {
-		mockFetch(
-			jsonResponse({ conversations: [conversation] }),
-			jsonResponse({ conversations: [] }),
-			jsonResponse({ conversations: [] }),
-			jsonResponse({ error: "Cannot delete" }, { status: 500 }),
-		);
+		queueMock(vi.mocked(fetchConversations), [conversation]);
+		queueMock(vi.mocked(deleteConversation), [], [], () => {
+			throw new Error("Cannot delete");
+		});
 		const onError = vi.fn();
 		const onDeletedActive = vi.fn();
 		const { result } = renderHook(() =>
@@ -237,7 +316,7 @@ describe("web business workflows", () => {
 	});
 
 	it("uses fallback messages when conversation deletion fails outside the normal API envelope", async () => {
-		mockFetch(() => {
+		queueMock(vi.mocked(deleteConversation), () => {
 			throw "offline";
 		});
 		const onError = vi.fn();
@@ -262,10 +341,9 @@ describe("web business workflows", () => {
 			clock,
 			timelineItems: [assistantMessage],
 		};
-		const fetchMock = mockFetch(
-			jsonResponse(created),
-			jsonResponse({ error: "Create failed" }, { status: 500 }),
-		);
+		queueMock(vi.mocked(createConversation), created, () => {
+			throw new Error("Create failed");
+		});
 		const onConversationCreated = vi.fn();
 		const onRefreshConversations = vi.fn(async () => {});
 		const onRefreshTactics = vi.fn(async () => {});
@@ -312,18 +390,18 @@ describe("web business workflows", () => {
 		expect(onRefreshConversations).toHaveBeenCalled();
 		expect(onRefreshTactics).toHaveBeenCalledWith("c1");
 		expect(result.current.open).toBe(false);
-		expect(
-			JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)),
-		).toMatchObject({
-			capabilities: {
-				tactics: false,
-				dayProgression: false,
-				sessionState: false,
-				sceneEvents: false,
-			},
-			allowedTacticIds: [],
-			enabledStateIds: [],
-		});
+		expect(createConversation).toHaveBeenCalledWith(
+			expect.objectContaining({
+				capabilities: {
+					tactics: false,
+					dayProgression: false,
+					sessionState: false,
+					sceneEvents: false,
+				},
+				allowedTacticIds: [],
+				enabledStateIds: [],
+			}),
+		);
 
 		await act(async () => {
 			await result.current.startNewConversation();
@@ -332,9 +410,12 @@ describe("web business workflows", () => {
 	});
 
 	it("renames conversations explicitly and reports rename failures", async () => {
-		mockFetch(
-			jsonResponse({ conversations: [{ ...conversation, title: "Renamed" }] }),
-			jsonResponse({ error: "Rename failed" }, { status: 500 }),
+		queueMock(
+			vi.mocked(renameConversation),
+			[{ ...conversation, title: "Renamed" }],
+			() => {
+				throw new Error("Rename failed");
+			},
 			() => {
 				throw "offline";
 			},
@@ -386,7 +467,7 @@ describe("web business workflows", () => {
 	});
 
 	it("keeps new-chat state recoverable when creation fails without an Error object", async () => {
-		mockFetch(() => {
+		queueMock(vi.mocked(createConversation), () => {
 			throw "offline";
 		});
 		const { result } = renderHook(() =>
@@ -417,7 +498,7 @@ describe("web business workflows", () => {
 			clock: null,
 			timelineItems: [],
 		};
-		const fetchMock = mockFetch(jsonResponse(created));
+		queueMock(vi.mocked(createConversation), created);
 		const onConversationCreated = vi.fn();
 		const { result } = renderHook(() =>
 			useNewChatWorkflow({
@@ -464,12 +545,12 @@ describe("web business workflows", () => {
 
 		expect(result.current.error).toBe("");
 		expect(onConversationCreated).toHaveBeenCalledWith(created);
-		expect(
-			JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)),
-		).toMatchObject({
-			capabilities: { sessionState: true },
-			enabledStateIds: ["urgency"],
-		});
+		expect(createConversation).toHaveBeenCalledWith(
+			expect.objectContaining({
+				capabilities: expect.objectContaining({ sessionState: true }),
+				enabledStateIds: ["urgency"],
+			}),
+		);
 	});
 
 	it("allows ordinary state toggles when no selected tactic requires them", async () => {
@@ -526,7 +607,7 @@ describe("web business workflows", () => {
 			clock: null,
 			timelineItems: [],
 		};
-		const fetchMock = mockFetch(jsonResponse(created));
+		queueMock(vi.mocked(createConversation), created);
 		const { result } = renderHook(() =>
 			useNewChatWorkflow({
 				refreshTacticLibraryStatus: vi.fn(async () => ({
@@ -555,18 +636,19 @@ describe("web business workflows", () => {
 			await result.current.startNewConversation();
 		});
 
-		expect(
-			JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)),
-		).toMatchObject({
-			capabilities: { sessionState: true },
-			enabledStateIds: ["urgency"],
-		});
+		expect(createConversation).toHaveBeenCalledWith(
+			expect.objectContaining({
+				capabilities: expect.objectContaining({ sessionState: true }),
+				enabledStateIds: ["urgency"],
+			}),
+		);
 	});
 
 	it("refreshes tactic library and session status from global and session scopes", async () => {
 		const onClockChange = vi.fn();
-		mockFetch(
-			jsonResponse({
+		queueMock(
+			vi.mocked(fetchTacticsStatus),
+			{
 				conversationId: "c1",
 				tactics: [
 					tactic,
@@ -584,17 +666,17 @@ describe("web business workflows", () => {
 				],
 				clock,
 				recentRuns: [],
-			}),
-			jsonResponse({
+			},
+			{
 				tactics: [tactic],
 				stateDefinitions: [stateDefinition],
 				userState: [],
 				clock: null,
 				recentRuns: [],
-			}),
-			jsonResponse(null, { status: 404 }),
-			jsonResponse(null, { status: 404 }),
-			jsonResponse(null, { status: 404 }),
+			},
+			null,
+			null,
+			null,
 		);
 		const { result } = renderHook(() => useTacticsWorkflow({ onClockChange }));
 
@@ -631,15 +713,33 @@ describe("web business workflows", () => {
 	});
 
 	it("edits tactic library and refreshes active session state after mutations", async () => {
-		mockFetch(
-			jsonResponse({ tactics: [tactic], stateDefinitions: [stateDefinition] }),
-			jsonResponse({ error: "Save tactic failed" }, { status: 500 }),
-			jsonResponse({ tactics: [], stateDefinitions: [stateDefinition] }),
-			jsonResponse({ error: "Delete failed" }, { status: 500 }),
-			jsonResponse({ tactics: [], stateDefinitions: [stateDefinition] }),
-			jsonResponse({ error: "Save state failed" }, { status: 500 }),
-			jsonResponse({ tactics: [], stateDefinitions: [] }),
-			jsonResponse({ error: "Delete state failed" }, { status: 500 }),
+		queueMock(
+			vi.mocked(saveTactic),
+			{ tactics: [tactic], stateDefinitions: [stateDefinition] },
+			() => {
+				throw new Error("Save tactic failed");
+			},
+		);
+		queueMock(
+			vi.mocked(deleteTactic),
+			{ tactics: [], stateDefinitions: [stateDefinition] },
+			() => {
+				throw new Error("Delete failed");
+			},
+		);
+		queueMock(
+			vi.mocked(saveStateDefinition),
+			{ tactics: [], stateDefinitions: [stateDefinition] },
+			() => {
+				throw new Error("Save state failed");
+			},
+		);
+		queueMock(
+			vi.mocked(deleteStateDefinition),
+			{ tactics: [], stateDefinitions: [] },
+			() => {
+				throw new Error("Delete state failed");
+			},
 		);
 		const refreshTacticLibrary = vi.fn(async () => {});
 		const refreshSessionTactics = vi.fn(async () => {});
@@ -714,21 +814,22 @@ describe("web business workflows", () => {
 	});
 
 	it("refreshes only the global tactic library when no session is active and reports unknown tactic failures", async () => {
-		mockFetch(
-			jsonResponse({ tactics: [tactic], stateDefinitions: [stateDefinition] }),
+		queueMock(
+			vi.mocked(saveTactic),
+			{ tactics: [tactic], stateDefinitions: [stateDefinition] },
 			() => {
 				throw "save offline";
 			},
-			() => {
-				throw "delete offline";
-			},
-			() => {
-				throw "state save offline";
-			},
-			() => {
-				throw "state delete offline";
-			},
 		);
+		queueMock(vi.mocked(deleteTactic), () => {
+			throw "delete offline";
+		});
+		queueMock(vi.mocked(saveStateDefinition), () => {
+			throw "state save offline";
+		});
+		queueMock(vi.mocked(deleteStateDefinition), () => {
+			throw "state delete offline";
+		});
 		const refreshTacticLibrary = vi.fn(async () => {});
 		const refreshSessionTactics = vi.fn(async () => {});
 		const setConfigError = vi.fn();
@@ -1073,7 +1174,8 @@ describe("web business workflows", () => {
 	});
 
 	it("reports unknown config-save failures without leaving the settings workflow saving", async () => {
-		mockFetch(jsonResponse(configResponse), () => {
+		queueMock(vi.mocked(fetchConfig), configResponse);
+		queueMock(vi.mocked(saveConfig), () => {
 			throw "offline";
 		});
 		const { result } = renderHook(() =>
@@ -1093,32 +1195,31 @@ describe("web business workflows", () => {
 	});
 
 	it("restores, sends, refreshes, and resets a chat session", async () => {
-		vi.useFakeTimers();
 		const restored = {
 			conversation,
 			clock,
 			timelineItems: [assistantMessage],
 		};
 		const advancedClock = { ...clock, day: 2 };
-		mockFetch(
-			jsonResponse({
+		queueMock(
+			vi.mocked(sendChatMessage),
+			{
 				requestId: "minimal",
 				conversationId: "",
 				tacticIds: undefined,
 				clock: undefined,
 				timelineItems: undefined,
 				createdItems: [],
-			}),
-			jsonResponse({
+			},
+			{
 				requestId: "day-without-id",
 				conversationId: "",
 				tacticIds: [],
 				clock,
 				timelineItems: [],
 				createdItems: [{ ...assistantMessage, kind: "day_transition" }],
-			}),
-			jsonResponse(restored),
-			jsonResponse({
+			},
+			{
 				requestId: "r1",
 				conversationId: "c1",
 				tacticIds: ["calm"],
@@ -1136,29 +1237,9 @@ describe("web business workflows", () => {
 				createdItems: [
 					{ ...assistantMessage, id: "d2", kind: "day_transition" },
 				],
-			}),
-			jsonResponse({
-				conversation,
-				clock: advancedClock,
-				timelineItems: [
-					{ ...assistantMessage, id: "refresh", content: "Refreshed" },
-				],
-			}),
-			jsonResponse({
-				conversation,
-				clock: advancedClock,
-				timelineItems: [
-					{ ...assistantMessage, id: "refresh-2", content: "Refreshed" },
-				],
-			}),
-			jsonResponse({
-				conversation,
-				clock: advancedClock,
-				timelineItems: [
-					{ ...assistantMessage, id: "refresh-3", content: "Refreshed" },
-				],
-			}),
+			},
 		);
+		queueMock(vi.mocked(fetchConversation), restored);
 		const onRefreshConversations = vi.fn(async () => {});
 		const onRefreshTactics = vi.fn(async () => {});
 		const { result } = renderHook(() => useChatSession());
@@ -1202,11 +1283,7 @@ describe("web business workflows", () => {
 		expect(result.current.lastTacticIds).toEqual(["calm"]);
 		expect(result.current.activeClock?.day).toBe(2);
 		expect(onRefreshConversations).toHaveBeenCalled();
-
-		await act(async () => {
-			await vi.runOnlyPendingTimersAsync();
-		});
-		expect(result.current.messages.at(-1)?.content).toBe("Refreshed");
+		expect(result.current.messages.at(-1)?.content).toBe("Day 2");
 
 		act(() => {
 			result.current.resetSession();
@@ -1233,7 +1310,9 @@ describe("web business workflows", () => {
 			"Start a new chat before sending a message.",
 		);
 
-		mockFetch(jsonResponse({ error: "Provider down" }, { status: 500 }));
+		queueMock(vi.mocked(sendChatMessage), () => {
+			throw new Error("Provider down");
+		});
 		act(() => {
 			result.current.applyConversation({
 				conversation,
@@ -1253,11 +1332,10 @@ describe("web business workflows", () => {
 		});
 		expect(result.current.status).toBe("error");
 		expect(result.current.error).toBe("Provider down");
-		expect(
-			result.current.messages.some((message) =>
-				message.content.includes("request failed"),
-			),
-		).toBe(true);
+		expect(result.current.draft).toBe("hello");
+		expect(result.current.messages).toEqual([
+			expect.objectContaining({ id: "pending", content: "" }),
+		]);
 	});
 
 	it("edits the last user message and regenerates the latest assistant turn", async () => {
@@ -1283,20 +1361,18 @@ describe("web business workflows", () => {
 			id: "a2",
 			content: "Regenerated answer",
 		};
-		const fetchMock = mockFetch(
-			jsonResponse({
-				requestId: "edit",
-				conversationId: "c1",
-				tacticIds: ["calm"],
-				usage: { promptTokens: 30 },
-				clock,
-				timelineItems: [
-					{ ...userMessage, content: "Edited question" },
-					regeneratedAssistant,
-				],
-				createdItems: [regeneratedAssistant],
-			}),
-		);
+		queueMock(vi.mocked(editLastUserMessage), {
+			requestId: "edit",
+			conversationId: "c1",
+			tacticIds: ["calm"],
+			usage: { promptTokens: 30 },
+			clock,
+			timelineItems: [
+				{ ...userMessage, content: "Edited question" },
+				regeneratedAssistant,
+			],
+			createdItems: [regeneratedAssistant],
+		});
 		const onRefreshConversations = vi.fn(async () => {});
 		const onRefreshTactics = vi.fn(async () => {});
 		const { result } = renderHook(() => useChatSession());
@@ -1326,16 +1402,10 @@ describe("web business workflows", () => {
 			});
 		});
 
-		expect(fetchMock).toHaveBeenCalledWith(
-			"/api/chat/edit-last",
-			expect.objectContaining({
-				method: "POST",
-				body: JSON.stringify({
-					conversationId: "c1",
-					message: "Edited question",
-				}),
-			}),
-		);
+		expect(editLastUserMessage).toHaveBeenCalledWith({
+			conversationId: "c1",
+			message: "Edited question",
+		});
 		expect(result.current.messages).toEqual([
 			{ ...userMessage, content: "Edited question" },
 			regeneratedAssistant,
@@ -1355,7 +1425,9 @@ describe("web business workflows", () => {
 			content: "Original question",
 			usage: undefined,
 		};
-		mockFetch(jsonResponse({ error: "Edit failed" }, { status: 500 }));
+		queueMock(vi.mocked(editLastUserMessage), () => {
+			throw new Error("Edit failed");
+		});
 		const { result } = renderHook(() => useChatSession());
 
 		await act(async () => {
@@ -1401,7 +1473,7 @@ describe("web business workflows", () => {
 			content: "Original question",
 			usage: undefined,
 		};
-		mockFetch(() => {
+		queueMock(vi.mocked(editLastUserMessage), () => {
 			throw "offline";
 		});
 		const { result } = renderHook(() => useChatSession());
@@ -1426,7 +1498,7 @@ describe("web business workflows", () => {
 	});
 
 	it("leaves the visible conversation intact when an unknown send failure has no pending assistant slot", async () => {
-		mockFetch(() => {
+		queueMock(vi.mocked(sendChatMessage), () => {
 			throw "offline";
 		});
 		const { result } = renderHook(() => useChatSession());
@@ -1449,14 +1521,12 @@ describe("web business workflows", () => {
 	});
 
 	it("keeps sending in the active chat when the chat response omits conversation id", async () => {
-		mockFetch(
-			jsonResponse({
-				requestId: "same-chat",
-				tacticIds: [],
-				timelineItems: [assistantMessage],
-				createdItems: [],
-			}),
-		);
+		queueMock(vi.mocked(sendChatMessage), {
+			requestId: "same-chat",
+			tacticIds: [],
+			timelineItems: [assistantMessage],
+			createdItems: [],
+		});
 		const { result } = renderHook(() => useChatSession());
 
 		act(() => {

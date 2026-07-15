@@ -3,10 +3,7 @@ import type {
 	TimelineItem,
 } from "../../../../shared/types";
 import { createClientId } from "../../../shared/lib";
-import {
-	appendLocalItemsAtomic,
-	getConfig,
-} from "../../../shared/storage/repository";
+import { getConfig } from "../../../shared/storage/repository";
 import { generateOpeningScenesLocal } from "./localRuntime";
 
 export async function createLocalOpeningTimeline(
@@ -44,7 +41,6 @@ export async function createLocalOpeningTimeline(
 			);
 		}
 	}
-	if (items.length) await appendLocalItemsAtomic(conversation, items);
 	return items;
 }
 

@@ -24,6 +24,7 @@ export type ConfigModalProps = {
 	view: ConfigModalView;
 	draft: ConfigSettingsFormDraft | null;
 	error: string;
+	statusMessage?: string;
 	open: boolean;
 	saving: boolean;
 	onDeleteProvider(providerId: string): void;
@@ -98,6 +99,7 @@ export function ConfigModal(props: ConfigModalProps) {
 									activeModelLabel={props.view.activeModelLabel}
 									draft={props.draft}
 									error={props.error}
+									statusMessage={props.statusMessage}
 									modelOptions={props.view.modelOptions}
 									thinkingLevelOptions={props.view.thinkingLevelOptions}
 									saving={props.saving}
