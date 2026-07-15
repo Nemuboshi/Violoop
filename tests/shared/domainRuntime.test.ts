@@ -176,4 +176,52 @@ describe("shared domain runtime", () => {
 		]);
 		expect(states[0].value).toBe(55);
 	});
+
+	it("rejects patches with non-string keys and clamps non-finite deltas to zero", () => {
+		const states: UserState[] = [
+			{
+				key: "trust",
+				value: 10,
+				source: "explicit",
+				confidence: 1,
+				updatedAt: "2026-01-01T00:00:00.000Z",
+			},
+		];
+		expect(
+			sanitizeStatePatches(states, [
+				{ key: 123, delta: 1 },
+				{ key: "trust", delta: 1 },
+			]),
+		).toEqual([expect.objectContaining({ key: "trust", delta: 1 })]);
+		expect(
+			sanitizeStatePatches([], [undefined, null, 1, { key: "x" }]),
+		).toEqual([]);
+		expect(
+			applyStatePatchValues(states, [
+				{ key: "trust", delta: Number.POSITIVE_INFINITY },
+			]),
+		).toEqual([expect.objectContaining({ key: "trust", delta: 0 })]);
+		expect(
+			sanitizeStatePatches(
+				[
+					{
+						key: "trust",
+						value: 10,
+						source: "explicit",
+						confidence: 1,
+						updatedAt: "2026-01-01T00:00:00.000Z",
+					},
+				],
+				[{ key: "trust", delta: Number.NaN }],
+			),
+		).toEqual([expect.objectContaining({ key: "trust", delta: 0 })]);
+	});
+
+	it("falls back to an empty message list when the structured payload fails schema validation", () => {
+		expect(
+			parseStructuredChatResult(
+				'{"messages":"bad","runtimeActions":[{"tool":"advance_day"}]}',
+			),
+		).toEqual({ messages: [] });
+	});
 });

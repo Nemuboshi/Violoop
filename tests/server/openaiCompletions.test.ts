@@ -426,6 +426,48 @@ describe("openai completions provider adapter", () => {
 		expect(requests[0].body.thinking).toBeUndefined();
 	});
 
+	it("rethrows an already-typed provider error and tolerates undefined stream chunks", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => {
+				throw new ProviderRequestError(400, "already typed", "detail");
+			}),
+		);
+		await expect(collect(options())).rejects.toMatchObject({
+			status: 400,
+			message: "already typed",
+		});
+
+		const chunked = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(undefined as unknown as Uint8Array);
+				controller.enqueue(
+					new TextEncoder().encode(
+						`data: ${JSON.stringify({ choices: [{ delta: { content: "ok" } }] })}\n\n`,
+					),
+				);
+				controller.close();
+			},
+		});
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response(chunked, { status: 200 })),
+		);
+		await expect(collect(options())).resolves.toEqual([
+			{ type: "text", text: "ok" },
+		]);
+	});
+
+	it("rethrows a plain fetch error that is neither a provider error nor an abort", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => {
+				throw new Error("network down");
+			}),
+		);
+		await expect(collect(options())).rejects.toThrow("network down");
+	});
+
 	it("times out aborted provider requests and rejects oversized streams", async () => {
 		vi.useFakeTimers();
 		vi.stubGlobal(

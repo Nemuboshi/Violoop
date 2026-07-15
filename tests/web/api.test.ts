@@ -17,6 +17,7 @@ import {
 	saveTactic,
 } from "../../src/web/entities/tactic";
 import { sendChatMessage } from "../../src/web/features/chat-session";
+import { editLastUserMessage } from "../../src/web/features/chat-session/api/chatApi";
 import {
 	fetchConfig,
 	saveConfig,
@@ -179,6 +180,28 @@ describe("web api boundaries", () => {
 				model: "model-a",
 			}),
 		).rejects.toThrow("Provider test failed with 500");
+
+		mockFetch(
+			jsonResponse(
+				{
+					error: "Provider request failed with 400.",
+					detail: '{"message":"unknown model"}',
+				},
+				{ status: 400 },
+			),
+		);
+		await expect(
+			testProviderConnection({
+				providerId: "local",
+				provider: {
+					baseUrl: "http://provider.test",
+					api: "openai-completions",
+				},
+				model: "model-a",
+			}),
+		).rejects.toThrow(
+			'Provider request failed with 400.\n{"message":"unknown model"}',
+		);
 	});
 
 	it("posts provider test requests through the Worker proxy", async () => {
@@ -326,6 +349,12 @@ describe("local-only API facades", () => {
 			sendChatMessage({
 				conversationId: created.conversation.id,
 				message: "hello",
+			}),
+		).resolves.toMatchObject({ conversationId: created.conversation.id });
+		await expect(
+			editLastUserMessage({
+				conversationId: created.conversation.id,
+				message: "edited",
 			}),
 		).resolves.toMatchObject({ conversationId: created.conversation.id });
 

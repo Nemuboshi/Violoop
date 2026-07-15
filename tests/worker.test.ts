@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { workerApp } from "../src/worker/app";
 
 function provider() {
@@ -15,6 +15,10 @@ function sse(text: string) {
 		{ status: 200, headers: { "Content-Type": "text/event-stream" } },
 	);
 }
+
+afterEach(() => {
+	vi.unstubAllGlobals();
+});
 
 describe("Hono Worker proxy", () => {
 	it("serves health and proxies stateless chat", async () => {
@@ -172,6 +176,281 @@ describe("Hono Worker proxy", () => {
 		});
 		expect(invalidHost.status).toBe(400);
 		vi.unstubAllGlobals();
+	});
+
+	it("filters header allowlists, model lists, and denies disallowed provider-test hosts", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response(
+						`data: ${JSON.stringify({ choices: [{ delta: { content: "ok" } }] })}\n\ndata: [DONE]\n`,
+						{ status: 200 },
+					),
+			),
+		);
+		const proxied = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: {
+					baseUrl: "https://provider.example/v1",
+					api: "openai-completions",
+					model: { id: "model-a" },
+					models: [{ id: "model-a", name: "Named" }],
+					headers: {
+						Accept: "text/plain",
+						Authorization: "nope",
+						"X-Trace": "1",
+					},
+				},
+				messages: [
+					{ role: "user", content: "hi" },
+					{ role: "tool", content: "bad" },
+				],
+			}),
+		});
+		expect(proxied.status).toBe(400);
+		const ok = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: {
+					baseUrl: "https://provider.example/v1",
+					api: "openai-completions",
+					model: { id: "model-a" },
+					models: [{ id: "model-a", name: "Named" }],
+					headers: {
+						Accept: "text/plain",
+						Authorization: "nope",
+						"X-Trace": "1",
+					},
+				},
+				messages: [{ role: "user", content: "hi" }],
+			}),
+		});
+		expect(ok.status).toBe(200);
+
+		const testDenied = await workerApp.request(
+			"/api/providers/test",
+			{
+				method: "POST",
+				body: JSON.stringify({
+					providerId: "p",
+					provider: {
+						baseUrl: "https://provider.example/v1",
+						api: "openai-completions",
+					},
+					model: "model-a",
+				}),
+			},
+			{ VIOLOOP_ALLOWED_PROVIDER_HOSTS: "other.example" },
+		);
+		expect(testDenied.status).toBe(400);
+	});
+
+	it("rejects malformed message lists, private-network hosts, and empty-message upstream failures", async () => {
+		const badMessage = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: provider(),
+				messages: [null, { role: "user" }],
+			}),
+		});
+		expect(badMessage.status).toBe(400);
+
+		const privateLink = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: { ...provider(), baseUrl: "https://169.254.10.10/v1" },
+				messages: [{ role: "user", content: "hi" }],
+			}),
+		});
+		expect(privateLink.status).toBe(400);
+
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => {
+				throw Object.assign(new Error(""), {
+					status: 503,
+					detail: "empty-message",
+				});
+			}),
+		);
+		const emptyMessage = await workerApp.request("/api/providers/test", {
+			method: "POST",
+			body: JSON.stringify({
+				providerId: "draft-id",
+				provider: provider(),
+				model: "m",
+			}),
+		});
+		expect(emptyMessage.status).toBe(503);
+		expect(await emptyMessage.json()).toMatchObject({
+			error: "Unexpected server error",
+			detail: "empty-message",
+		});
+	});
+
+	it("validates chat provider URLs across missing fields, bad hosts, and payload limits", async () => {
+		const noProvider = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] }),
+		});
+		expect(noProvider.status).toBe(400);
+		const noModel = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: {
+					baseUrl: "https://provider.example/v1",
+					api: "openai-completions",
+				},
+				messages: [{ role: "user", content: "hi" }],
+			}),
+		});
+		expect(noModel.status).toBe(400);
+		const badUrl = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: {
+					baseUrl: "not a url",
+					api: "openai-completions",
+					model: { id: "m" },
+				},
+				messages: [{ role: "user", content: "hi" }],
+			}),
+		});
+		expect(badUrl.status).toBe(400);
+		const httpRemote = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: {
+					baseUrl: "http://provider.example/v1",
+					api: "openai-completions",
+					model: { id: "m" },
+				},
+				messages: [{ role: "user", content: "hi" }],
+			}),
+		});
+		expect(httpRemote.status).toBe(400);
+		const internal = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: {
+					baseUrl: "https://svc.internal/v1",
+					api: "openai-completions",
+					model: { id: "m" },
+				},
+				messages: [{ role: "user", content: "hi" }],
+			}),
+		});
+		expect(internal.status).toBe(400);
+		const zeroHost = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: {
+					baseUrl: "https://0.0.0.0/v1",
+					api: "openai-completions",
+					model: { id: "m" },
+				},
+				messages: [{ role: "user", content: "hi" }],
+			}),
+		});
+		expect(zeroHost.status).toBe(400);
+		const privateA = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: {
+					baseUrl: "https://192.168.1.1/v1",
+					api: "openai-completions",
+					model: { id: "m" },
+				},
+				messages: [{ role: "user", content: "hi" }],
+			}),
+		});
+		expect(privateA.status).toBe(400);
+		const privateB = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: {
+					baseUrl: "https://172.20.0.1/v1",
+					api: "openai-completions",
+					model: { id: "m" },
+				},
+				messages: [{ role: "user", content: "hi" }],
+			}),
+		});
+		expect(privateB.status).toBe(400);
+		const hugeBody = "x".repeat(2 * 1024 * 1024 + 10);
+		const oversized = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: hugeBody,
+		});
+		expect(oversized.status).toBe(413);
+		const health = await workerApp.request(
+			"/api/health",
+			{
+				headers: { Origin: "https://app.example" },
+			},
+			{
+				VIOLOOP_ALLOWED_ORIGINS: "https://app.example",
+			},
+		);
+		expect(health.status).toBe(200);
+		const testBadUrl = await workerApp.request("/api/providers/test", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: { baseUrl: "::::", api: "openai-completions" },
+				model: "m",
+			}),
+		});
+		expect(testBadUrl.status).toBe(400);
+		const testEmpty = await workerApp.request("/api/providers/test", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: { baseUrl: "   ", api: "openai-completions" },
+				model: "m",
+			}),
+		});
+		expect(testEmpty.status).toBe(400);
+	});
+
+	it("accepts a draft provider test and rejects a plain fetch failure with a 500", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				Response.json({ choices: [{ message: { content: "ok" } }] }),
+			),
+		);
+		const draft = await workerApp.request("/api/providers/test", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: {
+					baseUrl: "https://provider.example/v1",
+					api: "openai-completions",
+					apiKey: "k",
+				},
+				model: "model-a",
+			}),
+		});
+		expect(draft.status).toBe(200);
+
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => {
+				throw new Error("plain-upstream");
+			}),
+		);
+		const plain = await workerApp.request("/api/chat", {
+			method: "POST",
+			body: JSON.stringify({
+				provider: {
+					baseUrl: "https://provider.example/v1",
+					api: "openai-completions",
+					model: { id: "m" },
+				},
+				messages: [{ role: "user", content: "hi" }],
+			}),
+		});
+		expect(plain.status).toBe(500);
 	});
 
 	it("returns usage from provider streams and successful provider tests", async () => {

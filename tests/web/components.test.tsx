@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 
+import { Dialog } from "@base-ui/react/dialog";
 import {
 	cleanup,
+	fireEvent,
 	render,
 	screen,
 	waitFor,
@@ -45,6 +47,7 @@ import {
 } from "../../src/web/shared/ui";
 import { ChatComposer, ChatTimeline } from "../../src/web/widgets/chat-panel";
 import { ConfigModal } from "../../src/web/widgets/config-modal";
+import { ConfigSettingsTab } from "../../src/web/widgets/config-modal/ui/ConfigSettingsTab";
 import { SidebarContent } from "../../src/web/widgets/sidebar";
 
 vi.mock("../../src/web/entities/conversation", () => ({
@@ -307,6 +310,109 @@ describe("web components", () => {
 		await user.click(screen.getByRole("button", { name: "Send" }));
 		expect(onDraftChange).toHaveBeenCalled();
 		expect(onSubmit).toHaveBeenCalled();
+	});
+
+	it("wires settings import controls and reveals editing on a keyboard-focused timeline row", async () => {
+		const onImportStrategy = vi.fn();
+		const onImport = vi.fn();
+		render(
+			<Dialog.Root open>
+				<ConfigSettingsTab
+					activeModelLabel="Active model"
+					draft={{
+						defaultModel: "model-a",
+						temperature: "0.7",
+						thinkingLevel: "off",
+						systemPrompt: "System",
+						systemPromptCache: false,
+						compactionEnabled: true,
+						compactionTriggerTokens: "1000",
+						compactionKeepRecentTokens: "100",
+					}}
+					error=""
+					modelOptions={[]}
+					thinkingLevelOptions={[{ label: "Off", value: "off" }]}
+					saving={false}
+					importStrategy="replace"
+					onImportStrategy={onImportStrategy}
+					onImport={onImport}
+					onSubmit={vi.fn()}
+					onUpdate={vi.fn()}
+				/>
+			</Dialog.Root>,
+		);
+		onImportStrategy("skip");
+		const file = new File(["{}"], "violoop.json", { type: "application/json" });
+		const input = document.querySelector(
+			"input[type='file']",
+		) as HTMLInputElement;
+		await userEvent.setup().upload(input, file);
+		expect(onImport).toHaveBeenCalledWith(file, "replace");
+		fireEvent.change(input, { target: { files: null } });
+		expect(onImport).toHaveBeenCalledTimes(1);
+
+		const onEditStart = vi.fn();
+		const { unmount } = render(
+			<ChatTimeline
+				status="idle"
+				scrollRef={{ current: null }}
+				onEditStart={onEditStart}
+				items={[
+					{
+						id: "user-last",
+						itemClassName: "user-item",
+						speakerClassName: "user-speaker",
+						speaker: "You",
+						contentClassName: "user-content",
+						content: "Hello",
+						editable: true,
+					},
+				]}
+			/>,
+		);
+		const row = screen.getByText("Hello").closest("article");
+		fireEvent.keyDown(row as HTMLElement, { key: "Enter" });
+		fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+		expect(onEditStart).toHaveBeenCalled();
+		unmount();
+	});
+
+	it("selects an import conflict strategy from the settings combobox", async () => {
+		const user = userEvent.setup();
+		const onImportStrategy = vi.fn();
+		render(
+			<Dialog.Root open>
+				<ConfigSettingsTab
+					activeModelLabel="Active model"
+					draft={{
+						defaultModel: "model-a",
+						temperature: "0.7",
+						thinkingLevel: "off",
+						systemPrompt: "System",
+						systemPromptCache: false,
+						compactionEnabled: true,
+						compactionTriggerTokens: "1000",
+						compactionKeepRecentTokens: "100",
+					}}
+					error=""
+					modelOptions={[]}
+					thinkingLevelOptions={[{ label: "Off", value: "off" }]}
+					saving={false}
+					importStrategy="replace"
+					onImportStrategy={onImportStrategy}
+					onImport={vi.fn()}
+					onSubmit={vi.fn()}
+					onUpdate={vi.fn()}
+				/>
+			</Dialog.Root>,
+		);
+		await user.click(
+			screen.getByRole("combobox", { name: "Import conflict behavior" }),
+		);
+		await user.click(
+			await screen.findByRole("option", { name: "Skip matching records" }),
+		);
+		expect(onImportStrategy).toHaveBeenCalledWith("skip");
 	});
 
 	it("renders sidebar session actions and hides session-only panels when no chat is active", async () => {

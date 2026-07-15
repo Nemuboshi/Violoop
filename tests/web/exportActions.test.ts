@@ -2,11 +2,13 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { VioloopConfig } from "../../src/shared/types";
+import { getLocal, putLocal } from "../../src/web/shared/storage/database";
 import {
 	exportLocalData,
 	serializeExport,
 } from "../../src/web/shared/storage/export";
 import {
+	confirmReplaceImportPreview,
 	downloadLocalExport,
 	importLocalExport,
 } from "../../src/web/shared/storage/exportActions";
@@ -86,12 +88,15 @@ describe("export and import actions", () => {
 			allowedTacticIds: [],
 			enabledStateIds: [],
 		});
+		await putLocal("meta", { id: "backup:old", data: {} });
 		const exported = await exportLocalData();
 		const file = new File([serializeExport(exported)], "violoop.json", {
 			type: "application/json",
 		});
 		const result = await importLocalExport(file, "replace");
 		expect(result.replaced + result.imported).toBeGreaterThan(0);
+		expect(await getLocal("meta", "backup:old")).toBeUndefined();
+		expect(await getLocal("meta", "backup:latest")).toBeTruthy();
 		await expect(
 			importLocalExport(
 				new File(["{}"], "bad.json", { type: "application/json" }),
@@ -111,5 +116,20 @@ describe("export and import actions", () => {
 		const huge = new File([""], "huge.json", { type: "application/json" });
 		Object.defineProperty(huge, "size", { value: 21 * 1024 * 1024 });
 		await expect(importLocalExport(huge)).rejects.toThrow("too large");
+	});
+
+	it("exposes a confirmation helper for replace imports", () => {
+		vi.stubGlobal(
+			"confirm",
+			vi.fn(() => true),
+		);
+		expect(
+			confirmReplaceImportPreview({
+				conversations: 1,
+				tactics: 2,
+				stateDefinitions: 3,
+			}),
+		).toBe(true);
+		expect(window.confirm).toHaveBeenCalled();
 	});
 });

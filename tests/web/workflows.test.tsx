@@ -1543,4 +1543,24 @@ describe("web business workflows", () => {
 		expect(result.current.activeConversationId).toBe("c1");
 		expect(result.current.messages).toEqual([assistantMessage]);
 	});
+
+	it("blocks sending while the browser reports itself offline", async () => {
+		const { result } = renderHook(() => useChatSession());
+
+		act(() => {
+			result.current.applyConversation({
+				conversation,
+				clock,
+				timelineItems: [],
+			});
+			result.current.setDraft("hello");
+		});
+		vi.stubGlobal("navigator", { onLine: false });
+		await act(async () => {
+			await result.current.sendMessage();
+		});
+		expect(result.current.error).toMatch(/offline/i);
+		expect(result.current.draft).toBe("hello");
+		expect(sendChatMessage).not.toHaveBeenCalled();
+	});
 });
