@@ -8,3 +8,4 @@ coverage-report.txt
 .logs
 .wrangler/
 .playwright-mcp/
+data/
