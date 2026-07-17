@@ -1,0 +1,6 @@
+# Keep repository text portable across Windows, CI, and Workers.
+* text=auto eol=lf
+
+# Preserve Windows-native line endings for batch scripts if they are added.
+*.bat text eol=crlf
+*.cmd text eol=crlf
