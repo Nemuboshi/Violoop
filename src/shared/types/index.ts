@@ -72,6 +72,13 @@ export type SessionClock = {
 
 export type ProviderApi = "openai-completions";
 
+/** Chooses whether requests leave from the browser's IP or the Worker IP. */
+export type ProviderTransport =
+	| "worker"
+	| "browser"
+	| "worker-fallback-browser"
+	| "browser-fallback-worker";
+
 export type ThinkingLevel =
 	| "off"
 	| "minimal"
@@ -117,6 +124,8 @@ export type ProviderConfig = {
 	headers?: Record<string, string>;
 	models?: ProviderModelConfig[];
 	compat?: ProviderCompat;
+	/** Defaults to Worker proxy for existing providers. */
+	transport?: ProviderTransport;
 };
 
 export type VioloopConfig = {
@@ -181,6 +190,7 @@ export type ActiveProvider = {
 	authHeader: boolean;
 	headers: Record<string, string>;
 	compat: ProviderCompat;
+	transport?: ProviderTransport;
 };
 
 export type StreamChatOptions = {

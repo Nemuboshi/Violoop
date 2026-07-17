@@ -10,7 +10,6 @@ import {
 import { scoreTactic as scoreSharedTactic } from "../../../../shared/domain/tactics";
 import type {
 	ChatMessage,
-	ChatUsage,
 	ConversationSummary,
 	LoadedTactic,
 	PromptBlock,
@@ -21,7 +20,7 @@ import type {
 	UserState,
 	VioloopConfig,
 } from "../../../../shared/types";
-import { fetchJson } from "../../../shared/api";
+import { requestAgent } from "../../../shared/api";
 import { createClientId } from "../../../shared/lib";
 import {
 	getSessionTacticIdsLocal,
@@ -302,11 +301,7 @@ export async function callWorker(input: {
 	thinkingLevel?: VioloopConfig["chat"]["thinkingLevel"];
 	cache?: VioloopConfig["chat"]["cache"];
 }) {
-	return fetchJson<{ text: string; usage?: ChatUsage }>("/api/chat", {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(input),
-	});
+	return requestAgent(input);
 }
 
 export function resolveProvider(config: VioloopConfig) {
@@ -325,6 +320,7 @@ export function resolveProvider(config: VioloopConfig) {
 		authHeader: provider.authHeader ?? true,
 		headers: provider.headers ?? {},
 		compat: { ...provider.compat, ...model.compat },
+		transport: provider.transport ?? "worker",
 	};
 }
 

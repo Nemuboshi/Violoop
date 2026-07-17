@@ -1,5 +1,6 @@
 import type {
 	ProviderConfig,
+	ProviderTransport,
 	ThinkingFormat,
 	VioloopConfig,
 } from "../../../../shared/types";
@@ -22,11 +23,28 @@ export type ProviderEditorDraft = {
 	supportsReasoningEffort: boolean;
 	thinkingFormat: "" | ThinkingFormat;
 	cacheControlFormat: "" | "anthropic";
+	transport: ProviderTransport;
 };
 
 type ProviderConfigWithModels = ProviderConfig & {
 	models: NonNullable<ProviderConfig["models"]>;
 };
+
+export const transportOptions: Array<{
+	label: string;
+	value: ProviderTransport;
+}> = [
+	{ label: "Worker proxy (clean CORS)", value: "worker" },
+	{ label: "Browser direct (home IP; requires CORS)", value: "browser" },
+	{
+		label: "Browser direct, then Worker proxy",
+		value: "browser-fallback-worker",
+	},
+	{
+		label: "Worker proxy, then browser direct",
+		value: "worker-fallback-browser",
+	},
+];
 
 export const thinkingFormatOptions: Array<{
 	label: string;
@@ -79,6 +97,7 @@ export function newProviderEditorDraft(): ProviderEditorDraft {
 		supportsReasoningEffort: false,
 		thinkingFormat: "",
 		cacheControlFormat: "",
+		transport: "worker",
 	};
 }
 
@@ -99,6 +118,7 @@ export function toProviderEditorDraft(
 		supportsReasoningEffort: provider.compat?.supportsReasoningEffort ?? false,
 		thinkingFormat: provider.compat?.thinkingFormat ?? "",
 		cacheControlFormat: provider.compat?.cacheControlFormat ?? "",
+		transport: provider.transport ?? "worker",
 	};
 }
 
@@ -126,6 +146,7 @@ export function fromProviderEditorDraft(
 		api: "openai-completions",
 		apiKey: draft.apiKey.trim() || undefined,
 		authHeader: draft.authHeader,
+		transport: draft.transport,
 		models: models.map((model) => ({ id: model, name: model })),
 		compat: {
 			...(previousProvider?.compat ?? {}),

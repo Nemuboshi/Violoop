@@ -61,7 +61,15 @@ The Worker validates Provider URLs. HTTPS is required in production; localhost H
 
 Providers use the OpenAI-compatible `/chat/completions` shape. The adapter supports the existing thinking formats, developer/system role selection, usage streaming, prompt cache options, Anthropic cache markers, and SSE response parsing.
 
-Provider API keys are stored in the current browser's IndexedDB. The Worker proxy prevents Provider CORS problems and hides the Provider URL from frontend request code, but it is not a server-side secret vault: the browser owner and a successful XSS can access local keys.
+Each provider has a **Request route** setting:
+
+- **Worker proxy** sends from the Cloudflare Worker IP and avoids browser CORS restrictions.
+- **Browser direct** sends from the user's residential/browser network IP, but requires the upstream to allow that origin through CORS.
+- The two fallback choices retry through the other route if the preferred route fails.
+
+This lets a provider use the browser's cleaner IP when its CORS policy permits it, while retaining the Worker route for CORS-blocked requests. A fallback can cause a failed request to be sent twice, so select an explicit route for providers where duplicate requests are not acceptable.
+
+Provider API keys are stored in the current browser's IndexedDB. Browser-direct calls necessarily expose the Provider URL and API key to the browser network request; the Worker proxy does not make keys a server-side secret vault either, because the browser owner and a successful XSS can access local keys.
 
 ## Local data and export
 

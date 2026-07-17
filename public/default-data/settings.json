@@ -18,6 +18,7 @@
 			"baseUrl": "http://127.0.0.1:15721/v1",
 			"api": "openai-completions",
 			"authHeader": false,
+			"transport": "worker",
 			"models": [{ "id": "gpt-5.5", "name": "gpt-5.5" }],
 			"compat": {
 				"supportsDeveloperRole": true,

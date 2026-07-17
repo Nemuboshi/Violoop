@@ -17,6 +17,7 @@ import {
 	type ProviderEditorDraft,
 	slugifyProviderName,
 	thinkingFormatOptions,
+	transportOptions,
 } from "../model/providerDraft";
 
 type ProviderEditModalProps = {
@@ -124,6 +125,16 @@ export function ProviderEditModal(props: ProviderEditModalProps) {
 						</div>
 
 						<div className="grid grid-cols-2 gap-4 max-md:grid-cols-1">
+							<SelectField
+								label="Request route"
+								value={draft.transport}
+								options={transportOptions}
+								onChange={(value) =>
+									update({
+										transport: value as ProviderEditorDraft["transport"],
+									})
+								}
+							/>
 							<SelectField
 								label="Thinking format"
 								value={draft.thinkingFormat}
