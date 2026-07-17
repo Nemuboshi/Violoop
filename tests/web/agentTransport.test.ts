@@ -102,7 +102,26 @@ describe("agent transport", () => {
 		);
 		await expect(
 			requestAgent(request({ transport: "browser-fallback-worker" })),
-		).rejects.toThrow("unavailable");
+		).rejects.toThrow("likely blocked by CORS");
+	});
+
+	it("explains browser-direct CORS and network failures", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => {
+				throw new TypeError("Load failed");
+			}),
+		);
+
+		await expect(
+			testAgentProvider({
+				providerId: "home",
+				provider: provider({ transport: "browser" }),
+				model: "model-a",
+			}),
+		).rejects.toThrow(
+			"Allow this app origin plus the Authorization and Content-Type headers",
+		);
 	});
 
 	it("tests Worker providers through the validated Worker route", async () => {

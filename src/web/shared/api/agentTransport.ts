@@ -160,11 +160,20 @@ async function requestWorkerAgent(input: AgentRequest): Promise<AgentResponse> {
 async function requestBrowserAgent(
 	input: AgentRequest,
 ): Promise<AgentResponse> {
-	let text = "";
-	let usage: ChatUsage | undefined;
-	for await (const event of streamOpenAiCompletions(input)) {
-		if (event.type === "text") text += event.text;
-		if (event.type === "usage") usage = event.usage;
+	try {
+		let text = "";
+		let usage: ChatUsage | undefined;
+		for await (const event of streamOpenAiCompletions(input)) {
+			if (event.type === "text") text += event.text;
+			if (event.type === "usage") usage = event.usage;
+		}
+		return { text, usage };
+	} catch (error) {
+		if (error instanceof TypeError) {
+			throw new Error(
+				"Browser direct could not reach the provider. It was likely blocked by CORS or the provider is unavailable. Allow this app origin plus the Authorization and Content-Type headers on the provider, or use a Worker/fallback route.",
+			);
+		}
+		throw error;
 	}
-	return { text, usage };
 }
