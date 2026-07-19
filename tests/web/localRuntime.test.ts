@@ -163,6 +163,12 @@ describe("local runtime workflows", () => {
 			clock,
 			timeline: created.timelineItems,
 		});
+		const request = vi.mocked(fetch).mock.calls[0]?.[1];
+		const body = JSON.parse(String(request?.body)) as {
+			promptBlocks: Array<{ content: string }>;
+		};
+		expect(body.promptBlocks[0]?.content).toContain('"patches"');
+		expect(body.promptBlocks[0]?.content).toContain('"stateNote"');
 		expect(result.applied).toHaveLength(1);
 		expect(result.note).toBe("Day update");
 		const duplicate = await runDailyStateUpdateLocal({

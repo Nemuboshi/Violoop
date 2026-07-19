@@ -9,7 +9,7 @@ import {
 	timelineItemSchema,
 	userStateSchema,
 } from "../../../shared/domain/runtime";
-import type { ProviderConfig, VioloopConfig } from "../../../shared/types";
+import type { VioloopConfig } from "../../../shared/types";
 import {
 	getConfig,
 	getSessionClockLocal,
@@ -35,6 +35,7 @@ const providerModelSchema = z.object({
 const providerSchema = z.object({
 	name: z.string().optional(),
 	baseUrl: z.string().min(1),
+	apiKey: z.string().optional(),
 	api: z.literal("openai-completions"),
 	authHeader: z.boolean().optional(),
 	headers: z.record(z.string(), z.string()).optional(),
@@ -100,7 +101,7 @@ export type VioloopExport = z.infer<typeof exportSchema>;
 export async function exportLocalData(): Promise<VioloopExport> {
 	const config = await getConfig();
 	const conversations = await listConversationsLocal();
-	const providers = redactProviders(config?.providers ?? {});
+	const providers = config?.providers ?? {};
 	return {
 		format: "violoop-export",
 		schemaVersion: 1,
@@ -136,15 +137,6 @@ export function parseImport(text: string) {
 		throw new Error("Import file is not valid JSON.");
 	}
 	return exportSchema.parse(value);
-}
-
-function redactProviders(providers: Record<string, ProviderConfig>) {
-	return Object.fromEntries(
-		Object.entries(providers).map(([id, provider]) => {
-			const { apiKey: _apiKey, ...safeProvider } = provider;
-			return [id, safeProvider];
-		}),
-	);
 }
 
 function emptyConfig() {

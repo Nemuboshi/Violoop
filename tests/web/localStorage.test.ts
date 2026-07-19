@@ -172,12 +172,14 @@ describe("IndexedDB local data", () => {
 		);
 		const data = await exportLocalData();
 		expect(data.format).toBe("violoop-export");
-		expect(data.providers.local).not.toHaveProperty("apiKey");
-		expect(() => parseImport(serializeExport(data))).not.toThrow();
+		expect(data.providers.local).toMatchObject({ apiKey: "secret" });
+		const parsedExport = parseImport(serializeExport(data));
+		expect(parsedExport.providers.local).toMatchObject({ apiKey: "secret" });
 		await clearAllLocalData();
-		await importLocalData(data);
+		await importLocalData(parsedExport);
 		expect(await getConfig()).toMatchObject({
 			chat: { defaultProvider: "local" },
+			providers: { local: { apiKey: "secret" } },
 		});
 		expect((await listLocal("conversations")).length).toBe(1);
 	});

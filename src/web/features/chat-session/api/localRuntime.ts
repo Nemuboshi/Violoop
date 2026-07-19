@@ -245,8 +245,14 @@ export async function runDailyStateUpdateLocal(input: {
 				{
 					label: "stable-system",
 					cacheScope: "stable",
-					content:
-						"Update bounded Violoop session state after a day transition. Return JSON only. Each delta must be between -10 and 10. Do not advance the day.",
+					content: [
+						"Update bounded Violoop session state after a day transition.",
+						"Return JSON only, with exactly this shape:",
+						'{"patches":[{"key":"allowed-state-key","delta":0,"reason":"recent evidence"}],"stateNote":"brief update summary"}',
+						"patches must be an array. Use only allowed-state-key values. Each delta must be an integer between -10 and 10.",
+						"Use an empty patches array only when the recent timeline provides no evidence for any state change.",
+						"Do not return messages, runtimeActions, markdown, or any other fields. Do not advance the day.",
+					].join("\n"),
 				},
 				{
 					label: "dynamic-runtime",
